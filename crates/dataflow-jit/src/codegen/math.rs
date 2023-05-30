@@ -2,14 +2,6 @@ use crate::codegen::{utils::FunctionBuilderExt, CodegenCtx, TRAP_DIV_OVERFLOW};
 use cranelift::prelude::{types, FloatCC, FunctionBuilder, InstBuilder, IntCC, MemFlags, Value};
 
 impl CodegenCtx<'_> {
-    /// Check if a float is NaN
-    pub(super) fn float_is_nan(&mut self, x: Value, builder: &mut FunctionBuilder<'_>) -> Value {
-        debug_assert!(builder.value_type(x).is_float());
-        // TODO: Float comparison conditions are confusing, I think this is correct
-        // though
-        builder.ins().fcmp(FloatCC::Unordered, x, x)
-    }
-
     /// Based off of rust's [`f32::total_cmp()`] and [`f64::total_cmp()`]
     /// implementations
     ///

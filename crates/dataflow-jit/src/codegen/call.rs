@@ -989,8 +989,8 @@ impl CodegenCtx<'_> {
         debug_assert!(float_ty.is_float());
         debug_assert_eq!(float_ty, builder.value_type(y));
 
-        let x_nan = self.float_is_nan(x, builder);
-        let y_nan = self.float_is_nan(x, builder);
+        let x_nan = self.is_nan(x, builder);
+        let y_nan = self.is_nan(x, builder);
         let nan_value = builder.ins().select(x_nan, x, y);
         let either_nan = builder.ins().bor(x_nan, y_nan);
 
