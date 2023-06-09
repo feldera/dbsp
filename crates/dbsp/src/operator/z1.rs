@@ -147,7 +147,8 @@ where
 /// value is typically the neutral element of a monoid (e.g., 0 for addition
 /// or 1 for multiplication).
 ///
-/// It is a [strict operator](`crate::circuit::operator_traits::StrictOperator`).
+/// It is a [strict
+/// operator](`crate::circuit::operator_traits::StrictOperator`).
 ///
 /// # Examples
 ///
@@ -276,7 +277,8 @@ where
 /// fixed point value.  This is not generally true for all circuits, and
 /// users should keep this in mind when instantiating the operator.
 ///
-/// It is a [strict operator](`crate::circuit::operator_traits::StrictOperator`).
+/// It is a [strict
+/// operator](`crate::circuit::operator_traits::StrictOperator`).
 ///
 /// # Examples
 ///

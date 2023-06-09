@@ -13,6 +13,7 @@ use std::{
     hash::{Hash, Hasher},
     marker::PhantomData,
     mem::{swap, take},
+    ops::Range,
     sync::{
         atomic::{AtomicUsize, Ordering},
         Arc, Mutex,
@@ -460,32 +461,36 @@ where
 
 struct InputHandleInternal<T> {
     mailbox: Vec<Mailbox<T>>,
+    offset: usize,
 }
 
 impl<T> InputHandleInternal<T>
 where
     T: Default + Clone,
 {
-    fn new(num_workers: usize) -> Self {
-        assert_ne!(num_workers, 0);
-
-        let mut mailbox = Vec::with_capacity(num_workers);
-        for _ in 0..num_workers {
-            mailbox.push(Mailbox::new());
+    // Returns a new `InputHandleInternal` for workers with indexes in the range
+    // of `workers`.
+    fn new(workers: Range<usize>) -> Self {
+        assert!(!workers.is_empty());
+        Self {
+            mailbox: workers.clone().map(|_| Mailbox::new()).collect(),
+            offset: workers.start,
         }
+    }
 
-        Self { mailbox }
+    fn workers(&self) -> Range<usize> {
+        self.offset..self.offset + self.mailbox.len()
     }
 
     fn set_for_worker(&self, worker: usize, v: T) {
-        self.mailbox[worker].set(v);
+        self.mailbox(worker).set(v);
     }
 
     fn update_for_worker<F>(&self, worker: usize, f: F)
     where
         F: FnOnce(&mut T),
     {
-        self.mailbox[worker].update(f);
+        self.mailbox(worker).update(f);
     }
 
     /// Send the same value to all workers.
@@ -503,7 +508,7 @@ where
     }
 
     fn mailbox(&self, worker: usize) -> &Mailbox<T> {
-        &self.mailbox[worker]
+        &self.mailbox[worker - self.offset]
     }
 }
 
@@ -527,7 +532,7 @@ where
 {
     fn new() -> Self {
         match Runtime::runtime() {
-            None => Self(Arc::new(InputHandleInternal::new(1))),
+            None => Self(Arc::new(InputHandleInternal::new(0..1))),
             Some(runtime) => {
                 let input_id = runtime.sequence_next(Runtime::worker_index());
 
@@ -535,12 +540,20 @@ where
                     .local_store()
                     .entry(InputId::new(input_id))
                     .or_insert_with(|| {
-                        Self(Arc::new(InputHandleInternal::new(runtime.num_workers())))
+                        Self(Arc::new(InputHandleInternal::new(
+                            runtime.layout().local_workers().clone(),
+                        )))
                     })
                     .value()
                     .clone()
             }
         }
+    }
+
+    /// Returns the range of worker indexes that this input handle covers.  For
+    /// a single-host circuit, this is all of the workers on this host.
+    fn workers(&self) -> Range<usize> {
+        self.0.workers()
     }
 
     fn mailbox(&self, worker: usize) -> &Mailbox<T> {
@@ -589,11 +602,10 @@ where
 /// [`add_input_indexed_zset`](`RootCircuit::add_input_indexed_zset`) and
 /// documentation for the exact semantics of these updates.
 ///
-/// Internally, the handle manages an array of mailboxes, one for
-/// each worker thread. It automatically partitions updates across
-/// mailboxes in a round robin fashion.  At the start of each clock
-/// cycle, the circuit consumes updates buffered in each mailbox,
-/// leaving the mailbox empty.
+/// Internally, the handle manages an array of mailboxes, one for each worker
+/// thread on this host. It automatically partitions updates across mailboxes in
+/// a round robin fashion.  At the start of each clock cycle, the circuit
+/// consumes updates buffered in each mailbox, leaving the mailbox empty.
 pub struct CollectionHandle<K, V> {
     input_handle: InputHandle<Vec<(K, V)>>,
     // Used to send tuples to workers in round robin.  Oftentimes the
@@ -632,16 +644,14 @@ where
 
     /// Push a single `(key,value)` pair to the input stream.
     pub fn push(&self, k: K, v: V) {
-        let num_partitions = self.num_partitions();
-
-        if num_partitions > 1 {
-            let next_worker = self.next_worker.fetch_add(1, Ordering::AcqRel);
-            self.input_handle
-                .update_for_worker(next_worker % num_partitions, |tuples| tuples.push((k, v)));
-        } else {
-            self.input_handle
-                .update_for_worker(0, |tuples| tuples.push((k, v)));
-        }
+        let next_worker = match self.num_partitions() {
+            1 => 0,
+            n => self.next_worker.fetch_add(1, Ordering::AcqRel) % n,
+        };
+        self.input_handle
+            .update_for_worker(next_worker + self.input_handle.workers().start, |tuples| {
+                tuples.push((k, v))
+            });
     }
 
     /// Push multiple `(key,value)` pairs to the input stream.
@@ -683,7 +693,7 @@ where
                 partition_size += 1;
             }
 
-            let worker = (next_worker + i) % num_partitions;
+            let worker = (next_worker + i) % num_partitions + self.input_handle.workers().start;
             if partition_size == vals.len() {
                 self.input_handle.update_for_worker(worker, |tuples| {
                     if tuples.is_empty() {

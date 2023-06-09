@@ -32,6 +32,7 @@ mod max;
 mod min;
 
 pub use average::Avg;
+use bincode::{Decode, Encode};
 pub use fold::Fold;
 pub use max::{Max, MaxSemigroup};
 pub use min::{Min, MinSemigroup};
@@ -159,7 +160,7 @@ impl<C, Z> Stream<C, Z>
 where
     C: Circuit,
     <C as WithClock>::Time: DBTimestamp,
-    Z: Clone + 'static,
+    Z: Clone + Encode + Decode + 'static,
 {
     /// Aggregate values associated with each key in an indexed Z-set.
     ///

@@ -17,6 +17,7 @@ use crate::{
     trace::{BatchReader, Builder, Cursor, Spine},
     Circuit, DBData, DBWeight, RootCircuit, Stream,
 };
+use bincode::{Decode, Encode};
 use num::{Bounded, PrimInt};
 use std::{
     borrow::Cow,
@@ -222,7 +223,10 @@ where
     }
 }
 
-impl<B> Stream<RootCircuit, B> {
+impl<B> Stream<RootCircuit, B>
+where
+    B: Encode + Decode,
+{
     /// Rolling aggregate of a partitioned stream over time range.
     ///
     /// For each record in the input stream, computes an aggregate

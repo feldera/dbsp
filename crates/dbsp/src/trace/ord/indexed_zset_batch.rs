@@ -16,6 +16,12 @@ use crate::{
     },
     DBData, DBWeight, NumEntries,
 };
+use bincode::{
+    de::Decoder,
+    enc::Encoder,
+    error::{DecodeError, EncodeError},
+    Decode, Encode,
+};
 use rand::Rng;
 use size_of::SizeOf;
 use std::{
@@ -387,6 +393,53 @@ where
                 fuel,
             );
         }
+    }
+}
+
+impl<K, V, R, O> Encode for OrdIndexedZSet<K, V, R, O>
+where
+    K: DBData,
+    V: DBData,
+    R: DBWeight,
+    O: OrdOffset,
+{
+    fn encode<E: Encoder>(&self, encoder: &mut E) -> Result<(), EncodeError> {
+        let len: usize = self.len();
+        Encode::encode(&len, encoder)?;
+        let mut n = 0;
+        let mut cursor = self.cursor();
+        while cursor.key_valid() {
+            while cursor.val_valid() {
+                Encode::encode(cursor.key(), encoder)?;
+                Encode::encode(cursor.val(), encoder)?;
+                Encode::encode(&cursor.weight(), encoder)?;
+                n += 1;
+                cursor.step_val();
+            }
+            cursor.step_key();
+        }
+        assert_eq!(n, len);
+        Ok(())
+    }
+}
+
+impl<K, V, R, O> Decode for OrdIndexedZSet<K, V, R, O>
+where
+    K: DBData,
+    V: DBData,
+    R: DBWeight,
+    O: OrdOffset,
+{
+    fn decode<D: Decoder>(decoder: &mut D) -> Result<Self, DecodeError> {
+        let len: usize = Decode::decode(decoder)?;
+        let mut builder = <Self as Batch>::Builder::with_capacity((), len);
+        for _ in 0..len {
+            let key = Decode::decode(decoder)?;
+            let value = Decode::decode(decoder)?;
+            let weight = Decode::decode(decoder)?;
+            builder.push(((key, value), weight));
+        }
+        Ok(builder.done())
     }
 }
 

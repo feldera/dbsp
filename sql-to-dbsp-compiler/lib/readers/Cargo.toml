@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+bincode = { version = "2.0.0-rc.2", features = ["serde"] }
 tuple = { path = "../tuple" }
 sqlvalue = { path = "../sqlvalue" }
 serde = { version = "1.0", features = ["derive"] }
