@@ -1,4 +1,5 @@
 use anyhow::Result;
+use bincode::{Decode, Encode};
 use csv::Reader;
 use dbsp::{
     operator::FilterMap, CollectionHandle, IndexedZSet, OrdIndexedZSet, OutputHandle, RootCircuit,
@@ -8,17 +9,7 @@ use size_of::SizeOf;
 use time::Date;
 
 #[derive(
-    Clone,
-    Debug,
-    Deserialize,
-    Eq,
-    PartialEq,
-    Ord,
-    PartialOrd,
-    Hash,
-    SizeOf,
-    bincode::Decode,
-    bincode::Encode,
+    Clone, Debug, Deserialize, Eq, PartialEq, Ord, PartialOrd, Hash, SizeOf, Decode, Encode,
 )]
 struct Record {
     location: String,
@@ -28,7 +19,7 @@ struct Record {
 }
 
 #[derive(
-    Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash, SizeOf, bincode::Decode, bincode::Encode,
+    Clone, Debug, Deserialize, Eq, PartialEq, Ord, PartialOrd, Hash, SizeOf, Decode, Encode,
 )]
 struct VaxMonthly {
     count: u64,

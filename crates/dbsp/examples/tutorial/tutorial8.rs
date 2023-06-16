@@ -1,4 +1,5 @@
 use anyhow::Result;
+use bincode::{Decode, Encode};
 use csv::Reader;
 use dbsp::{
     operator::{
@@ -12,17 +13,7 @@ use size_of::SizeOf;
 use time::Date;
 
 #[derive(
-    Clone,
-    Debug,
-    Deserialize,
-    Eq,
-    PartialEq,
-    Ord,
-    PartialOrd,
-    Hash,
-    SizeOf,
-    bincode::Decode,
-    bincode::Encode,
+    Clone, Debug, Deserialize, Eq, PartialEq, Ord, PartialOrd, Hash, SizeOf, Decode, Encode,
 )]
 struct Record {
     location: String,
@@ -75,8 +66,7 @@ fn build_circuit(
 }
 
 fn main() -> Result<()> {
-    let (circuit, (vax_handle, pop_handle, output_handle)) =
-        RootCircuit::build(build_circuit)?;
+    let (circuit, (vax_handle, pop_handle, output_handle)) = RootCircuit::build(build_circuit)?;
 
     let path = format!(
         "{}/examples/tutorial/vaccinations.csv",
