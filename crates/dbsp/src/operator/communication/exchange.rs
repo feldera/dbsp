@@ -22,7 +22,7 @@ use futures::{
     prelude::*,
 };
 use itertools::Itertools;
-use once_cell::sync::{OnceCell, Lazy};
+use once_cell::sync::{Lazy, OnceCell};
 use rand::distributions::Uniform;
 use serde::{de::DeserializeOwned, Serialize};
 use std::{
@@ -93,12 +93,15 @@ impl ExchangeService for ExchangeServer {
     }
 }
 
-struct Clients(Vec<(Range<usize>, ExchangeServiceClient)>);
+// Maps from a range of worker IDs to the RPC client used to contact those
+// workers.  `None` as an RPC client means that the workers are in the current
+// process.
+struct Clients(Vec<(Range<usize>, Option<ExchangeServiceClient>)>);
 
 impl Clients {
-    fn new(runtime: &Runtime, local_client: &ExchangeServiceClient) -> Clients {
+    fn new(runtime: &Runtime) -> Clients {
         Self(match runtime.layout() {
-            Layout::Solo { n_workers } => vec![(0..*n_workers, local_client.clone())],
+            Layout::Solo { n_workers } => vec![(0..*n_workers, None)],
             Layout::Multihost {
                 hosts,
                 local_host_idx,
@@ -107,17 +110,20 @@ impl Clients {
                 .enumerate()
                 .map(|(idx, host)| {
                     let client = if idx != *local_host_idx {
-                        let mut transport = connect(host.address, Bincode::default);
-                        transport.config_mut().max_frame_length(usize::MAX);
-                        // XXX Blocking here could cause deadlock?  We should connect
-                        // asynchronously.
-                        sleep(std::time::Duration::from_millis(1000));
-                        println!("connecting to {}", host.address);
-                        let transport = TOKIO.block_on(transport).unwrap();
-                        println!("connected to {}", host.address);
-                        ExchangeServiceClient::new(client::Config::default(), transport).spawn()
+                        Some({
+                            let _guard = TOKIO.enter();
+                            let mut transport = connect(host.address, Bincode::default);
+                            transport.config_mut().max_frame_length(usize::MAX);
+                            // XXX Blocking here could cause deadlock?  We should connect
+                            // asynchronously.
+                            sleep(std::time::Duration::from_millis(1000));
+                            println!("connecting to {}", host.address);
+                            let transport = TOKIO.block_on(transport).unwrap();
+                            println!("connected to {}", host.address);
+                            ExchangeServiceClient::new(client::Config::default(), transport).spawn()
+                        })
                     } else {
-                        local_client.clone()
+                        None
                     };
                     (host.workers.clone(), client)
                 })
@@ -127,8 +133,9 @@ impl Clients {
 }
 
 impl Index<usize> for Clients {
-    type Output = ExchangeServiceClient;
-    fn index(&self, worker: usize) -> &ExchangeServiceClient {
+    type Output = Option<ExchangeServiceClient>;
+    // Indexing `Clients` with a worker ID yields the corresponding client.
+    fn index(&self, worker: usize) -> &Option<ExchangeServiceClient> {
         for (workers, host) in self.0.iter() {
             if workers.contains(&worker) {
                 return host;
@@ -139,11 +146,10 @@ impl Index<usize> for Clients {
 }
 
 struct InnerExchange {
+    runtime: Runtime,
     exchange_id: ExchangeId,
     /// The number of communicating peers.
     npeers: usize,
-    clients: Arc<Clients>,
-    sender_notifies: Vec<Notify>,
     /// Counts the number of messages yet to be received in the current round of
     /// communication per receiver.  The receiver must wait until it has all
     /// `npeers` messages before reading all of them from mailboxes in one
@@ -151,11 +157,20 @@ struct InnerExchange {
     receiver_counters: Vec<AtomicUsize>,
     /// Callback invoked when all `npeers` messages are ready for a receiver.
     receiver_callbacks: Vec<OnceCell<Box<dyn Fn() + Send + Sync>>>,
-    /// For each sender, whether the sends from the previous round have
-    /// completed, so that the next round can begin.
-    ready_to_send: Vec<AtomicBool>,
+    /// Counts the number of empty mailboxes ready to accept new data per
+    /// sender. The sender waits until it has `npeers` available mailboxes
+    /// before writing all of them in one pass.
+    sender_counters: Vec<CachePadded<AtomicUsize>>,
     /// Callback invoked when all `npeers` mailboxes are available.
     sender_callbacks: Vec<OnceCell<Box<dyn Fn() + Send + Sync>>>,
+    /// The RPC clients to contact remote hosts.
+    clients: Arc<Clients>,
+    /// For each sender/receiver worker pair involved in RPC, this allows the
+    /// `exchange` RPC to wait until the receiver has taken its data out of the
+    /// mailbox.
+    sender_notifies: Vec<Notify>,
+    /// A callback that takes the raw data exchanged over RPC and deserializes
+    /// and delivers it to the receiver's mailbox.
     deliver: Box<dyn Fn(Vec<u8>, usize, usize) + Send + Sync + 'static>,
 }
 
@@ -168,13 +183,16 @@ impl InnerExchange {
     ) -> InnerExchange {
         let npeers = runtime.num_workers();
         Self {
+            runtime: runtime.clone(),
             exchange_id,
             npeers,
             clients,
             receiver_counters: (0..npeers).map(|_| AtomicUsize::new(0)).collect(),
             receiver_callbacks: (0..npeers).map(|_| OnceCell::new()).collect(),
             sender_notifies: (0..npeers * npeers).map(|_| Notify::new()).collect(),
-            ready_to_send: (0..npeers).map(|_| AtomicBool::new(true)).collect(),
+            sender_counters: (0..npeers)
+                .map(|_| CachePadded::new(AtomicUsize::new(npeers)))
+                .collect(),
             sender_callbacks: (0..npeers).map(|_| OnceCell::new()).collect(),
             deliver: Box::new(deliver),
         }
@@ -187,7 +205,6 @@ impl InnerExchange {
 
         let old_counter = self.receiver_counters[receiver].fetch_add(1, Ordering::AcqRel);
         if old_counter >= self.npeers - 1 {
-            // This can be a spurious callback.
             if let Some(cb) = self.receiver_callbacks[receiver].get() {
                 cb()
             }
@@ -203,8 +220,8 @@ impl InnerExchange {
     }
 
     fn ready_to_send(&self, sender: usize) -> bool {
-        debug_assert!(sender < self.npeers);
-        self.ready_to_send[sender].load(Ordering::Acquire)
+        debug_assert!(self.runtime.layout().local_workers().contains(&sender));
+        self.sender_counters[sender].load(Ordering::Acquire) == self.npeers
     }
 
     fn ready_to_receive(&self, receiver: usize) -> bool {
@@ -254,6 +271,7 @@ impl InnerExchange {
 /// Each call to exchange populates a mailbox.  When all the mailboxes for a
 /// worker have been populated, it can read and clear them.
 pub(crate) struct Exchange<T> {
+    runtime: Runtime,
     inner: Arc<InnerExchange>,
     /// `npeers^2` mailboxes, clients, and servers, one for each sender/receiver
     /// pair.  Each mailbox is accessed by exactly two threads, so contention is
@@ -293,7 +311,11 @@ where
             .entry(exchange_id)
             .and_modify(|_| panic!())
             .or_insert(inner.clone());
-        Self { inner, mailboxes }
+        Self {
+            runtime: runtime.clone(),
+            inner,
+            mailboxes,
+        }
     }
 
     /// Returns a reference to a mailbox for the sender/receiver pair.
@@ -315,17 +337,6 @@ where
             .local_store()
             .entry(ClientsId)
             .or_insert_with(|| {
-                let _guard = TOKIO.enter();
-
-                // Create a client and server for local exchange.
-                let (client_transport, server_transport) = tarpc::transport::channel::unbounded();
-                let local_client =
-                    ExchangeServiceClient::new(client::Config::default(), client_transport).spawn();
-                let local_server = ExchangeServer(directory.clone());
-                TOKIO.spawn(
-                    BaseChannel::with_defaults(server_transport).execute(local_server.serve()),
-                );
-
                 // Create a listener for remote exchange to connect to us.
                 if let Some(address) = runtime.layout().local_address() {
                     let mut listener = TOKIO.block_on(listen(address, Bincode::default)).unwrap();
@@ -346,10 +357,10 @@ where
                             .await;
                         println!("stopped listening");
                     });
-                };
+                }
 
                 // Create clients for remote exchange.
-                Arc::new(Clients::new(runtime, &local_client))
+                Arc::new(Clients::new(runtime))
             })
             .clone();
 
@@ -394,35 +405,62 @@ where
     where
         I: Iterator<Item = T> + Send,
     {
-        if !self.ready_to_send(sender) {
+        let npeers = self.inner.npeers;
+        if self.inner.sender_counters[sender]
+            .compare_exchange(npeers, 0, Ordering::AcqRel, Ordering::Acquire)
+            .is_err()
+        {
             return false;
         }
-        self.inner.ready_to_send[sender].store(false, Ordering::Release);
 
-        let encoded_data: Vec<_> = data
-            .map(|t| bincode::encode_to_vec(t, bincode::config::standard()).unwrap())
-            .collect();
+        // The range of worker IDs running on this host.
+        let local_workers = self.runtime.layout().local_workers();
 
-        let inner = self.inner.clone();
-        TOKIO.spawn(async move {
-            let mut waiters = Vec::with_capacity(encoded_data.len());
-            for (receiver, data) in encoded_data.into_iter().enumerate() {
-                waiters.push(inner.clients[receiver].exchange(
-                    context::current(),
-                    data,
-                    inner.exchange_id,
-                    sender,
-                    receiver,
-                ));
+        // Send messages to the peers on the same host as us, and save the
+        // others to send to remote peers.
+        let mut remote_items = Vec::with_capacity(npeers - local_workers.len());
+        for receiver in 0..npeers {
+            let item = data.next().unwrap();
+            if local_workers.contains(&receiver) {
+                *self.mailbox(sender, receiver).lock().unwrap() = Some(item);
+                let old_counter =
+                    self.inner.receiver_counters[receiver].fetch_add(1, Ordering::AcqRel);
+                if old_counter >= npeers - 1 {
+                    if let Some(cb) = self.inner.receiver_callbacks[receiver].get() {
+                        cb()
+                    }
+                }
+            } else {
+                remote_items.push((receiver, item));
             }
-            for waiter in waiters {
-                waiter.await.unwrap();
-            }
-            inner.ready_to_send[sender].store(true, Ordering::Release);
-            if let Some(cb) = inner.sender_callbacks[sender].get() {
-                cb()
-            }
-        });
+        }
+
+        if !remote_items.is_empty() {
+            let inner = self.inner.clone();
+            TOKIO.spawn(async move {
+                let n = remote_items.len();
+                let mut waiters = Vec::with_capacity(n);
+                for (receiver, item) in remote_items.into_iter() {
+                    let client = inner.clients[receiver].as_ref().unwrap();
+                    waiters.push(client.exchange(
+                        context::current(),
+                        bincode::encode_to_vec(item, bincode::config::standard()).unwrap(),
+                        inner.exchange_id,
+                        sender,
+                        receiver,
+                    ));
+                }
+                for waiter in waiters {
+                    waiter.await.unwrap();
+                }
+                let old_counter = inner.sender_counters[sender].fetch_add(n, Ordering::AcqRel);
+                if old_counter >= npeers - n {
+                    if let Some(cb) = inner.sender_callbacks[sender].get() {
+                        cb()
+                    }
+                }
+            });
+        }
         true
     }
 
@@ -449,6 +487,7 @@ where
             return false;
         }
 
+        let local_workers = self.runtime.layout().local_workers();
         for sender in 0..self.inner.npeers {
             let data = self
                 .mailbox(sender, receiver)
@@ -458,7 +497,16 @@ where
                 .unwrap();
             cb(data);
             self.inner.receiver_counters[receiver].fetch_sub(1, Ordering::Release);
-            self.inner.sender_notifies[self.inner.mailbox_index(sender, receiver)].notify_one();
+            if local_workers.contains(&sender) {
+                let old_counter = self.inner.sender_counters[sender].fetch_add(1, Ordering::AcqRel);
+                if old_counter >= self.inner.npeers - 1 {
+                    if let Some(cb) = self.inner.sender_callbacks[sender].get() {
+                        cb()
+                    }
+                }
+            } else {
+                self.inner.sender_notifies[self.inner.mailbox_index(sender, receiver)].notify_one();
+            }
         }
         true
     }
