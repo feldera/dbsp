@@ -22,7 +22,7 @@ use futures::{
     prelude::*,
 };
 use itertools::Itertools;
-use once_cell::sync::OnceCell;
+use once_cell::sync::{OnceCell, Lazy};
 use rand::distributions::Uniform;
 use serde::{de::DeserializeOwned, Serialize};
 use std::{
@@ -52,6 +52,9 @@ use tokio::{
     sync::Notify,
 };
 use typedmap::TypedMapKey;
+
+// All circuits can share a single Tokio runtime.
+static TOKIO: Lazy<TokioRuntime> = Lazy::new(|| TokioRuntime::new().unwrap());
 
 // We use the `Runtime::local_store` mechanism to connect multiple workers
 // to an `Exchange` instance.  During circuit construction, each worker
@@ -110,7 +113,7 @@ impl Clients {
                         // asynchronously.
                         sleep(std::time::Duration::from_millis(1000));
                         println!("connecting to {}", host.address);
-                        let transport = TokioHandle::current().block_on(transport).unwrap();
+                        let transport = TOKIO.block_on(transport).unwrap();
                         println!("connected to {}", host.address);
                         ExchangeServiceClient::new(client::Config::default(), transport).spawn()
                     } else {
@@ -136,7 +139,6 @@ impl Index<usize> for Clients {
 }
 
 struct InnerExchange {
-    tokio: TokioHandle,
     exchange_id: ExchangeId,
     /// The number of communicating peers.
     npeers: usize,
@@ -160,14 +162,12 @@ struct InnerExchange {
 impl InnerExchange {
     fn new(
         runtime: &Runtime,
-        tokio: TokioHandle,
         exchange_id: ExchangeId,
         deliver: impl Fn(Vec<u8>, usize, usize) + Send + Sync + 'static,
         clients: Arc<Clients>,
     ) -> InnerExchange {
         let npeers = runtime.num_workers();
         Self {
-            tokio: tokio.clone(),
             exchange_id,
             npeers,
             clients,
@@ -244,8 +244,6 @@ impl InnerExchange {
 /// produced at the previous round.  Likewise, the receive operation can proceed
 /// once all incoming values are ready for the current round.
 ///
-/// There is a single Tokio runtime for a given circuit.
-///
 /// Each worker has one ExchangeServiceClient and ExchangeServer for every
 /// worker (including itself), so N*N total.
 ///
@@ -270,7 +268,6 @@ where
     /// Create a new exchange operator for `npeers` communicating threads.
     fn new(
         runtime: &Runtime,
-        tokio: TokioHandle,
         exchange_id: ExchangeId,
         clients: Arc<Clients>,
         directory: ExchangeDirectory,
@@ -289,7 +286,7 @@ where
             *mailbox = Some(data);
         };
 
-        let inner = Arc::new(InnerExchange::new(runtime, tokio, exchange_id, deliver, clients));
+        let inner = Arc::new(InnerExchange::new(runtime, exchange_id, deliver, clients));
         directory
             .write()
             .unwrap()
@@ -308,15 +305,6 @@ where
     /// (created by another thread) does not yet exist within `runtime`.
     /// The number of peers will be set to `runtime.num_workers()`.
     pub(crate) fn with_runtime(runtime: &Runtime, exchange_id: ExchangeId) -> Arc<Self> {
-        // Grab a Tokio handle for this runtime first.  (We can't do it inside
-        // `Exchange::new` because that risks deadlock in the dashmap.)
-        let tokio = runtime
-            .local_store()
-            .entry(TokioId)
-            .or_insert_with(|| TokioRuntime::new().unwrap())
-            .handle()
-            .clone();
-
         let directory = runtime
             .local_store()
             .entry(DirectoryId)
@@ -327,23 +315,23 @@ where
             .local_store()
             .entry(ClientsId)
             .or_insert_with(|| {
-                let _guard = tokio.enter();
+                let _guard = TOKIO.enter();
 
                 // Create a client and server for local exchange.
                 let (client_transport, server_transport) = tarpc::transport::channel::unbounded();
                 let local_client =
                     ExchangeServiceClient::new(client::Config::default(), client_transport).spawn();
                 let local_server = ExchangeServer(directory.clone());
-                tokio.spawn(
+                TOKIO.spawn(
                     BaseChannel::with_defaults(server_transport).execute(local_server.serve()),
                 );
 
                 // Create a listener for remote exchange to connect to us.
                 if let Some(address) = runtime.layout().local_address() {
-                    let mut listener = tokio.block_on(listen(address, Bincode::default)).unwrap();
+                    let mut listener = TOKIO.block_on(listen(address, Bincode::default)).unwrap();
                     listener.config_mut().max_frame_length(usize::MAX);
                     let directory2 = directory.clone();
-                    tokio.spawn(async move {
+                    TOKIO.spawn(async move {
                         println!("listening on {address}");
                         listener
                             .filter_map(|r| future::ready(r.ok()))
@@ -371,7 +359,6 @@ where
             .or_insert_with(|| {
                 Arc::new(Exchange::new(
                     runtime,
-                    tokio,
                     exchange_id,
                     clients.clone(),
                     directory,
@@ -417,7 +404,7 @@ where
             .collect();
 
         let inner = self.inner.clone();
-        self.inner.tokio.spawn(async move {
+        TOKIO.spawn(async move {
             let mut waiters = Vec::with_capacity(encoded_data.len());
             for (receiver, data) in encoded_data.into_iter().enumerate() {
                 waiters.push(inner.clients[receiver].exchange(
@@ -835,13 +822,6 @@ where
         debug_assert!(res);
         combined
     }
-}
-
-#[derive(Hash, PartialEq, Eq)]
-struct TokioId;
-
-impl TypedMapKey<LocalStoreMarker> for TokioId {
-    type Value = TokioRuntime;
 }
 
 #[derive(Hash, PartialEq, Eq)]
