@@ -70,7 +70,7 @@ trait ExchangeService {
 type ExchangeId = usize;
 
 // Maps from an `exchange_id` to the `Inner` that implements the exchange.
-type ExchangeDirectory = Arc<RwLock<HashMap<ExchangeId, Arc<Inner>>>>;
+type ExchangeDirectory = Arc<RwLock<HashMap<ExchangeId, Arc<InnerExchange>>>>;
 
 #[derive(Clone)]
 struct ExchangeServer(ExchangeDirectory);
@@ -135,7 +135,7 @@ impl Index<usize> for Clients {
     }
 }
 
-struct Inner {
+struct InnerExchange {
     tokio: TokioHandle,
     exchange_id: ExchangeId,
     /// The number of communicating peers.
@@ -157,32 +157,23 @@ struct Inner {
     deliver: Box<dyn Fn(Vec<u8>, usize, usize) + Send + Sync + 'static>,
 }
 
-impl Inner {
+impl InnerExchange {
     fn new(
         runtime: &Runtime,
         tokio: TokioHandle,
         exchange_id: ExchangeId,
         deliver: impl Fn(Vec<u8>, usize, usize) + Send + Sync + 'static,
         clients: Arc<Clients>,
-    ) -> Inner {
-        let _guard = tokio.enter();
-
+    ) -> InnerExchange {
         let npeers = runtime.num_workers();
-
-        let receiver_counters: Vec<_> = (0..npeers).map(|_| AtomicUsize::new(0)).collect();
-
-        let receiver_callbacks: Vec<_> = (0..npeers).map(|_| OnceCell::new()).collect();
-
-        let sender_notifies: Vec<_> = (0..npeers * npeers).map(|_| Notify::new()).collect();
-
         Self {
             tokio: tokio.clone(),
             exchange_id,
             npeers,
             clients,
-            receiver_counters,
-            receiver_callbacks,
-            sender_notifies,
+            receiver_counters: (0..npeers).map(|_| AtomicUsize::new(0)).collect(),
+            receiver_callbacks: (0..npeers).map(|_| OnceCell::new()).collect(),
+            sender_notifies: (0..npeers * npeers).map(|_| Notify::new()).collect(),
             ready_to_send: (0..npeers).map(|_| AtomicBool::new(true)).collect(),
             sender_callbacks: (0..npeers).map(|_| OnceCell::new()).collect(),
             deliver: Box::new(deliver),
@@ -265,7 +256,7 @@ impl Inner {
 /// Each call to exchange populates a mailbox.  When all the mailboxes for a
 /// worker have been populated, it can read and clear them.
 pub(crate) struct Exchange<T> {
-    inner: Arc<Inner>,
+    inner: Arc<InnerExchange>,
     /// `npeers^2` mailboxes, clients, and servers, one for each sender/receiver
     /// pair.  Each mailbox is accessed by exactly two threads, so contention is
     /// low.
@@ -298,7 +289,7 @@ where
             *mailbox = Some(data);
         };
 
-        let inner = Arc::new(Inner::new(runtime, tokio, exchange_id, deliver, clients));
+        let inner = Arc::new(InnerExchange::new(runtime, tokio, exchange_id, deliver, clients));
         directory
             .write()
             .unwrap()

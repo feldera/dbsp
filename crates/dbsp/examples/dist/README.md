@@ -6,10 +6,10 @@ exchanging data at key points in the computation.  Distributed DBSP
 extends this model by allowing exchange to occur across a network
 rather than only through data structures within a single process.
 
-This directory contains two programs that demonstrate the concept.
-The first program, called `pool`, implements the same circuit as the
-`tutorial9` example.  When it starts, it listens for RPC connections
-on a TCP port specified on the command line.
+This directory contains two programs that jointly demonstrate the
+concept.  The first program, called `pool`, implements the same
+circuit as the `tutorial9` example.  When it starts, it listens for
+RPC connections on a TCP port specified on the command line.
 
 The second program, called `coord`, accepts a list of `pool` addresses
 to connect to, as well as a second list of addresses the `pool`

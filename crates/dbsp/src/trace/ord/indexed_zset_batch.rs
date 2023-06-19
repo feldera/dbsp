@@ -418,7 +418,7 @@ where
             }
             cursor.step_key();
         }
-        assert_eq!(n, len);
+        debug_assert_eq!(n, len);
         Ok(())
     }
 }

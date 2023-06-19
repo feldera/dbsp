@@ -46,12 +46,12 @@ async fn main() -> AnyResult<()> {
         println!("{layout:?}");
         let client2 = client.clone();
         join_handles.push(spawn(async move {
-            client2.init(context::current(), layout).await.unwrap();
+            client2.init(context::current(), layout).await
         }));
         clients.push(client);
     }
     for join_handle in join_handles {
-        join_handle.await?;
+        join_handle.await??;
     }
 
     let path = format!(
