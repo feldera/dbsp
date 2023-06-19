@@ -1,5 +1,7 @@
 //! Count operators.
 
+use bincode::{Decode, Encode};
+
 use crate::{
     algebra::{HasOne, IndexedZSet, ZRingValue},
     circuit::{Circuit, Stream, WithClock},
@@ -11,7 +13,7 @@ impl<C, Z> Stream<C, Z>
 where
     C: Circuit,
     <C as WithClock>::Time: DBTimestamp,
-    Z: IndexedZSet,
+    Z: IndexedZSet + Encode + Decode,
     Z::R: ZRingValue,
 {
     /// Incrementally sums the weights for each key `self` into an indexed Z-set

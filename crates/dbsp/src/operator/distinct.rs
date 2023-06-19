@@ -11,6 +11,7 @@ use crate::{
     trace::{ord::OrdValSpine, Batch, BatchReader, Builder, Cursor as TraceCursor, Trace},
     DBTimestamp, OrdIndexedZSet, Timestamp,
 };
+use bincode::{Decode, Encode};
 use size_of::SizeOf;
 use std::{
     borrow::Cow,
@@ -39,7 +40,7 @@ where
     /// by eliminating duplicates.
     pub fn stream_distinct(&self) -> Stream<C, Z>
     where
-        Z: IndexedZSet + Send,
+        Z: IndexedZSet + Send + Encode + Decode,
         Z::R: ZRingValue,
     {
         self.circuit()
@@ -63,7 +64,7 @@ where
     /// by eliminating duplicates.
     pub fn distinct(&self) -> Stream<C, Z>
     where
-        Z: IndexedZSet + Send,
+        Z: IndexedZSet + Send + Encode + Decode,
         Z::R: ZRingValue,
         <C as WithClock>::Time: DBTimestamp,
     {

@@ -8,6 +8,7 @@ use crate::{
     utils::VecExt,
     Circuit, DBData, DBTimestamp, DBWeight, OrdIndexedZSet, Stream,
 };
+use bincode::{Decode, Encode};
 use size_of::SizeOf;
 use std::{
     hash::Hash,
@@ -226,7 +227,7 @@ where
     #[track_caller]
     pub fn average<A, F>(&self, f: F) -> Stream<C, OrdIndexedZSet<Z::Key, A, Z::R>>
     where
-        Z: IndexedZSet,
+        Z: IndexedZSet + Encode + Decode,
         Z::R: ZRingValue,
         Avg<A, Z::R>: MulByRef<Z::R, Output = Avg<A, Z::R>>,
         A: DBData + From<Z::R> + Div<Output = A> + GroupValue,

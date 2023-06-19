@@ -164,13 +164,15 @@
 //!
 //! ```rust
 //! # use anyhow::Result;
+//! # use bincode::{Decode, Encode};
 //! # use dbsp::{CollectionHandle, RootCircuit, ZSet};
 //! # use serde::Deserialize;
 //! # use size_of::SizeOf;
 //! # use time::Date;
-//! # #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Ord, PartialOrd, Hash, SizeOf)]
+//! # #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Ord, PartialOrd, Hash, SizeOf, Decode, Encode)]
 //! # struct Record {
 //! #     location: String,
+//! #     #[bincode(with_serde)]
 //! #     date: Date,
 //! #     daily_vaccinations: Option<u64>,
 //! # }
@@ -202,15 +204,17 @@
 //!
 //! ```rust
 //! # use anyhow::Result;
+//! # use bincode::{Decode, Encode};
 //! # use csv::Reader;
 //! # use dbsp::{CollectionHandle, RootCircuit, ZSet};
 //! # use serde::Deserialize;
 //! # use size_of::SizeOf;
 //! # use time::Date;
 //! #
-//! # #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Ord, PartialOrd, Hash, SizeOf)]
+//! # #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Ord, PartialOrd, Hash, SizeOf, Decode, Encode)]
 //! # struct Record {
 //! #     location: String,
+//! #     #[bincode(with_serde)]
 //! #     date: Date,
 //! #     daily_vaccinations: Option<u64>,
 //! # }
@@ -247,16 +251,20 @@
 //! ```
 //!
 //! The compiler will point out a problem: `Record` lacks several traits
-//! required for the record type of the "Z-sets".  We can derive all of them:
+//! required for the record type of the "Z-sets".  We can derive all of them.
+//! The `Decode` and `Encode` features need a little help from `bincode` for the
+//! member of type `Date`:
 //!
 //! ```
+//! use bincode::{Decode, Encode};
 //! use serde::Deserialize;
 //! use size_of::SizeOf;
 //! use time::Date;
 //!
-//! #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Ord, PartialOrd, Hash, SizeOf)]
+//! #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Ord, PartialOrd, Hash, SizeOf, Decode, Encode)]
 //! # struct Record {
 //! #     location: String,
+//! #     #[bincode(with_serde)]
 //! #     date: Date,
 //! #     daily_vaccinations: Option<u64>,
 //! # }
@@ -270,15 +278,17 @@
 //!
 //! ```
 //! # use anyhow::Result;
+//! # use bincode::{Decode, Encode};
 //! # use csv::Reader;
 //! # use dbsp::{CollectionHandle, RootCircuit, ZSet};
 //! # use serde::Deserialize;
 //! # use size_of::SizeOf;
 //! # use time::Date;
 //! #
-//! # #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Ord, PartialOrd, Hash, SizeOf)]
+//! # #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Ord, PartialOrd, Hash, SizeOf, Decode, Encode)]
 //! # struct Record {
 //! #     location: String,
+//! #     #[bincode(with_serde)]
 //! #     date: Date,
 //! #     daily_vaccinations: Option<u64>,
 //! # }
@@ -334,15 +344,17 @@
 //!
 //! ```
 //! # use anyhow::Result;
+//! # use bincode::{Decode, Encode};
 //! # use csv::Reader;
 //! # use dbsp::{operator::FilterMap, CollectionHandle, OrdZSet, OutputHandle, RootCircuit, ZSet};
 //! # use serde::Deserialize;
 //! # use size_of::SizeOf;
 //! # use time::Date;
 //! #
-//! # #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Ord, PartialOrd, Hash, SizeOf)]
+//! # #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Ord, PartialOrd, Hash, SizeOf, Decode, Encode)]
 //! # struct Record {
 //! #     location: String,
+//! #     #[bincode(with_serde)]
 //! #     date: Date,
 //! #     daily_vaccinations: Option<u64>,
 //! # }
@@ -398,15 +410,17 @@
 //!
 //! ```
 //! # use anyhow::Result;
+//! # use bincode::{Decode, Encode};
 //! # use csv::Reader;
 //! # use dbsp::{operator::FilterMap, CollectionHandle, OrdZSet, OutputHandle, RootCircuit, ZSet};
 //! # use serde::Deserialize;
 //! # use size_of::SizeOf;
 //! # use time::Date;
 //! #
-//! # #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Ord, PartialOrd, Hash, SizeOf)]
+//! # #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Ord, PartialOrd, Hash, SizeOf, Decode, Encode)]
 //! # struct Record {
 //! #     location: String,
+//! #     #[bincode(with_serde)]
 //! #     date: Date,
 //! #     daily_vaccinations: Option<u64>,
 //! # }
@@ -465,15 +479,17 @@
 //!
 //! ```
 //! # use anyhow::Result;
+//! # use bincode::{Decode, Encode};
 //! # use csv::Reader;
 //! # use dbsp::{operator::FilterMap, CollectionHandle, OrdZSet, OutputHandle, RootCircuit, ZSet};
 //! # use serde::Deserialize;
 //! # use size_of::SizeOf;
 //! # use time::Date;
 //! #
-//! # #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Ord, PartialOrd, Hash, SizeOf)]
+//! # #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Ord, PartialOrd, Hash, SizeOf, Decode, Encode)]
 //! # struct Record {
 //! #     location: String,
+//! #     #[bincode(with_serde)]
 //! #     date: Date,
 //! #     daily_vaccinations: Option<u64>,
 //! # }
@@ -587,6 +603,7 @@
 //!
 //! ```
 //! # use anyhow::Result;
+//! # use bincode::{Decode, Encode};
 //! # use csv::Reader;
 //! # use dbsp::{
 //! #     operator::FilterMap, CollectionHandle, IndexedZSet, OrdIndexedZSet, OutputHandle, RootCircuit,
@@ -595,9 +612,10 @@
 //! # use size_of::SizeOf;
 //! # use time::Date;
 //! #
-//! # #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Ord, PartialOrd, Hash, SizeOf)]
+//! # #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Ord, PartialOrd, Hash, SizeOf, Decode, Encode)]
 //! # struct Record {
 //! #     location: String,
+//! #     #[bincode(with_serde)]
 //! #     date: Date,
 //! #     daily_vaccinations: Option<u64>,
 //! # }
@@ -723,6 +741,7 @@
 //!
 //! ```
 //! # use anyhow::Result;
+//! # use bincode::{Decode, Encode};
 //! # use csv::Reader;
 //! # use dbsp::{
 //! #     operator::{
@@ -735,9 +754,10 @@
 //! # use size_of::SizeOf;
 //! # use time::Date;
 //! #
-//! # #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Ord, PartialOrd, Hash, SizeOf)]
+//! # #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Ord, PartialOrd, Hash, SizeOf, Decode, Encode)]
 //! # struct Record {
 //! #     location: String,
+//! #     #[bincode(with_serde)]
 //! #     date: Date,
 //! #     daily_vaccinations: Option<u64>,
 //! # }
@@ -860,9 +880,9 @@
 //!
 //! We need to adjust the `build_circuit` return type and value and make `main`
 //! print the new kind of output:
-//!
 //! ```ignore
 //! # use anyhow::Result;
+//! # use bincode::{Decode, Encode};
 //! # use csv::Reader;
 //! # use dbsp::{
 //! #     operator::{
@@ -875,9 +895,10 @@
 //! # use size_of::SizeOf;
 //! # use time::Date;
 //! #
-//! # #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Ord, PartialOrd, Hash, SizeOf)]
+//! # #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Ord, PartialOrd, Hash, SizeOf, Decode, Encode)]
 //! # struct Record {
 //! #     location: String,
+//! #     #[bincode(with_serde)]
 //! #     date: Date,
 //! #     daily_vaccinations: Option<u64>,
 //! # }
@@ -888,8 +909,11 @@
 //!     CollectionHandle<Record, isize>,
 //!     OutputHandle<OrdIndexedZSet<(String, i32, u8), (isize, isize), isize>>,
 //! )> {
-//!     let (input_stream, input_handle) = circuit.add_input_zset::<Record, isize>();
+//!     let (input_stream, input_handle) = circuit.add_input_zset::<Record,
+//! isize>();
+//!
 //!     // ...
+//!
 //! #     let subset = input_stream.filter(|r| {
 //! #         r.location == "England"
 //! #             || r.location == "Northern Ireland"
@@ -920,7 +944,9 @@
 //! }
 //!
 //! fn main() -> Result<()> {
-//!     let (circuit, (input_handle, output_handle)) = RootCircuit::build(build_circuit)?;
+//!     let (circuit, (input_handle, output_handle)) =
+//! RootCircuit::build(build_circuit)?;
+//!
 //! #     let path = format!(
 //! #         "{}/examples/tutorial/vaccinations.csv",
 //! #         env!("CARGO_MANIFEST_DIR")
@@ -934,6 +960,7 @@
 //! #     circuit.step()?;
 //! #
 //!     // ...
+//!
 //!     output_handle
 //!         .consolidate()
 //!         .iter()
@@ -943,7 +970,7 @@
 //!     Ok(())
 //! }
 //! ```
-//!
+//! 
 //! The whole program is in `tutorial6.rs`.  If we run it, it prints both per-month
 //! vaccination numbers and 3-month moving averages:
 //!  
@@ -978,9 +1005,10 @@
 //! how Rust derives [`Ord`] lexicographically, that's as simple as:
 //!
 //! ```rust
+//! # use bincode::{Decode, Encode};
 //! # use size_of::SizeOf;
 //!
-//! #[derive(Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash, SizeOf)]
+//! # #[derive(Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash, SizeOf, Decode, Encode)]
 //! struct VaxMonthly {
 //!     count: u64,
 //!     year: i32,
@@ -1013,6 +1041,7 @@
 //!
 //! ```
 //! # use anyhow::Result;
+//! # use bincode::{Decode, Encode};
 //! # use csv::Reader;
 //! # use dbsp::{
 //! #     operator::FilterMap, CollectionHandle, IndexedZSet, OrdIndexedZSet, OutputHandle, RootCircuit,
@@ -1021,14 +1050,15 @@
 //! # use size_of::SizeOf;
 //! # use time::Date;
 //! #
-//! # #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Ord, PartialOrd, Hash, SizeOf)]
+//! # #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Ord, PartialOrd, Hash, SizeOf, Decode, Encode)]
 //! # struct Record {
 //! #     location: String,
+//! #     #[bincode(with_serde)]
 //! #     date: Date,
 //! #     daily_vaccinations: Option<u64>,
 //! # }
 //! #
-//! # #[derive(Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash, SizeOf)]
+//! # #[derive(Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash, SizeOf, Decode, Encode)]
 //! # struct VaxMonthly {
 //! #     count: u64,
 //! #     year: i32,
@@ -1137,6 +1167,7 @@
 //!
 //! ```
 //! # use anyhow::Result;
+//! # use bincode::{Decode, Encode};
 //! # use csv::Reader;
 //! # use dbsp::{
 //! #     operator::{
@@ -1149,9 +1180,10 @@
 //! # use size_of::SizeOf;
 //! # use time::Date;
 //! #
-//! # #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Ord, PartialOrd, Hash, SizeOf)]
+//! # #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Ord, PartialOrd, Hash, SizeOf, Decode, Encode)]
 //! # struct Record {
 //! #     location: String,
+//! #     #[bincode(with_serde)]
 //! #     date: Date,
 //! #     daily_vaccinations: Option<u64>,
 //! # }
@@ -1240,6 +1272,7 @@
 //!
 //! ```
 //! # use anyhow::Result;
+//! # use bincode::{Decode, Encode};
 //! # use csv::Reader;
 //! # use dbsp::{
 //! #     operator::{
@@ -1252,9 +1285,10 @@
 //! # use size_of::SizeOf;
 //! # use time::Date;
 //! #
-//! # #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Ord, PartialOrd, Hash, SizeOf)]
+//! # #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Ord, PartialOrd, Hash, SizeOf, Decode, Encode)]
 //! # struct Record {
 //! #     location: String,
+//! #     #[bincode(with_serde)]
 //! #     date: Date,
 //! #     daily_vaccinations: Option<u64>,
 //! # }
@@ -1346,6 +1380,7 @@
 //!
 //! ```
 //! # use anyhow::Result;
+//! # use bincode::{Decode, Encode};
 //! # use csv::Reader;
 //! # use dbsp::{
 //! #     operator::{
@@ -1358,9 +1393,10 @@
 //! # use size_of::SizeOf;
 //! # use time::Date;
 //! #
-//! # #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Ord, PartialOrd, Hash, SizeOf)]
+//! # #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Ord, PartialOrd, Hash, SizeOf, Decode, Encode)]
 //! # struct Record {
 //! #     location: String,
+//! #     #[bincode(with_serde)]
 //! #     date: Date,
 //! #     daily_vaccinations: Option<u64>,
 //! # }
@@ -1413,6 +1449,7 @@
 //!
 //! ```
 //! # use anyhow::Result;
+//! # use bincode::{Decode, Encode};
 //! # use csv::Reader;
 //! # use dbsp::{
 //! #     operator::{
@@ -1425,9 +1462,10 @@
 //! # use size_of::SizeOf;
 //! # use time::Date;
 //! #
-//! # #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Ord, PartialOrd, Hash, SizeOf)]
+//! # #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Ord, PartialOrd, Hash, SizeOf, Decode, Encode)]
 //! # struct Record {
 //! #     location: String,
+//! #     #[bincode(with_serde)]
 //! #     date: Date,
 //! #     daily_vaccinations: Option<u64>,
 //! # }
@@ -1542,6 +1580,7 @@
 //!
 //! ```
 //! # use anyhow::Result;
+//! # use bincode::{Decode, Encode};
 //! # use csv::Reader;
 //! # use dbsp::{
 //! #     operator::FilterMap, CollectionHandle, IndexedZSet, OrdIndexedZSet, OutputHandle, RootCircuit,
@@ -1550,14 +1589,15 @@
 //! # use size_of::SizeOf;
 //! # use time::Date;
 //! #
-//! # #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Ord, PartialOrd, Hash, SizeOf)]
+//! # #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Ord, PartialOrd, Hash, SizeOf, Decode, Encode)]
 //! # struct Record {
 //! #     location: String,
+//! #     #[bincode(with_serde)]
 //! #     date: Date,
 //! #     daily_vaccinations: Option<u64>,
 //! # }
 //! #
-//! # #[derive(Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash, SizeOf)]
+//! # #[derive(Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash, SizeOf, Decode, Encode)]
 //! # struct VaxMonthly {
 //! #     count: u64,
 //! #     year: i32,

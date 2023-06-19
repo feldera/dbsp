@@ -16,6 +16,8 @@ use std::{
 };
 use typedmap::{TypedDashMap, TypedMapKey};
 
+use super::dbsp_handle::{IntoLayout, Layout};
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum Error {
     WorkerPanic(usize),
@@ -65,22 +67,22 @@ pub struct LocalStoreMarker;
 pub type LocalStore = TypedDashMap<LocalStoreMarker>;
 
 struct RuntimeInner {
-    nworkers: usize,
+    layout: Layout,
     store: LocalStore,
 }
 
 impl Debug for RuntimeInner {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         f.debug_struct("RuntimeInner")
-            .field("nworkers", &self.nworkers)
+            .field("layout", &self.layout)
             .finish()
     }
 }
 
 impl RuntimeInner {
-    fn new(nworkers: usize) -> Self {
+    fn new(layout: Layout) -> Self {
         Self {
-            nworkers,
+            layout,
             store: TypedDashMap::new(),
         }
     }
@@ -94,19 +96,18 @@ impl RuntimeInner {
 pub struct Runtime(Arc<RuntimeInner>);
 
 impl Runtime {
-    /// Create a new runtime with `nworkers` worker threads and run a
-    /// user-provided closure in each thread.  The closure takes a reference
-    /// to the `Runtime` as an argument, so that workers can access shared
-    /// services provided by the runtime.
+    /// Create a new runtime with the specified `layout` and runs user-provided
+    /// closure `f` in each thread.  The closure should build a circuit and
+    /// return handles for this function to pass along to its own caller.  The
+    /// closure takes a reference to the `Runtime` as an argument, so that
+    /// workers can access shared services provided by the runtime.
     ///
-    /// Returns a handle through which the caller can interact with the runtime.
+    /// The `layout` may be specified as a number of worker threads or as a
+    /// [`Layout`].
     ///
-    /// # Arguments
-    ///
-    /// * `nworkers` - the number of worker threads to spawn.
-    ///
-    /// * `f` - closure that will be invoked in each worker thread.  Normally,
-    ///   this closure builds and runs a circuit.
+    /// Returns a handle to the runtime as well as the closure's own return
+    /// value. The closure should return the same value in each thread; this
+    /// function returns one of them arbitrarily.
     ///
     /// # Examples
     /// ```
@@ -138,14 +139,17 @@ impl Runtime {
     /// hruntime.join().unwrap();
     /// # }
     /// ```
-    pub fn run<F>(workers: usize, circuit: F) -> RuntimeHandle
+    pub fn run<F>(layout: impl IntoLayout, circuit: F) -> RuntimeHandle
     where
         F: FnOnce() + Clone + Send + 'static,
     {
-        let runtime = Self(Arc::new(RuntimeInner::new(workers)));
+        let layout = layout.into_layout();
+        let workers = layout.local_workers();
+        let nworkers = workers.len();
+        let runtime = Self(Arc::new(RuntimeInner::new(layout.clone())));
 
-        let mut handles = Vec::with_capacity(workers);
-        handles.extend((0..workers).map(|worker_index| {
+        let mut handles = Vec::with_capacity(nworkers);
+        handles.extend(workers.clone().map(|worker_index| {
             let runtime = runtime.clone();
             let build_circuit = circuit.clone();
 
@@ -176,7 +180,7 @@ impl Runtime {
             (join_handle, init_receiver)
         }));
 
-        let mut workers = Vec::with_capacity(workers);
+        let mut workers = Vec::with_capacity(nworkers);
         workers.extend(handles.into_iter().map(|(handle, recv)| {
             let (unparker, kill_signal) = recv.recv().unwrap();
             WorkerHandle::new(handle, unparker, kill_signal)
@@ -199,9 +203,9 @@ impl Runtime {
         RUNTIME.with(|rt| rt.borrow().clone())
     }
 
-    /// Returns 0-based index of the current worker thread within its
-    /// runtime.  For threads that run without a runtime, this method
-    /// returns `0`.
+    /// Returns 0-based index of the current worker thread within its runtime.
+    /// For threads that run without a runtime, this method returns `0`.  In a
+    /// multihost runtime, this is a global index across all hosts.
     pub fn worker_index() -> usize {
         WORKER_INDEX.with(|index| index.get())
     }
@@ -210,16 +214,23 @@ impl Runtime {
         &self.0
     }
 
-    /// Returns the number of workers in this runtime.
+    /// Returns the number of workers in the runtime's [`Layout`].  In a
+    /// multihost runtime, this is the total number of workers across all hosts.
     pub fn num_workers(&self) -> usize {
-        self.inner().nworkers
+        self.inner().layout.n_workers()
+    }
+
+    /// Returns the [`Layout`] for this runtime.
+    pub fn layout(&self) -> &Layout {
+        &self.inner().layout
     }
 
     /// Returns reference to the data store shared by all workers within the
-    /// runtime.
+    /// runtime.  In a multihost runtime, this data store is local to this
+    /// particular host.
     ///
     /// This low-level mechanism can be used by various services that
-    /// require common state shared across all workers.
+    /// require common state shared across all workers on a host.
     ///
     /// The [`LocalStore`] type is an alias to [`typedmap::TypedDashMap`], a
     /// concurrent map type that can store key/value pairs of different
@@ -234,7 +245,7 @@ impl Runtime {
     /// same across all worker threads.  Repeated calls to this function
     /// with the same worker index generate numbers 0, 1, 2, ...
     pub fn sequence_next(&self, worker_index: usize) -> usize {
-        debug_assert!(worker_index < self.inner().nworkers);
+        debug_assert!(self.inner().layout.local_workers().contains(&worker_index));
         let mut entry = self
             .local_store()
             .entry(WorkerId(worker_index))

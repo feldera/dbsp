@@ -13,6 +13,7 @@ use crate::{
     trace::{cursor::Cursor as TraceCursor, Batch, BatchReader, Batcher, Builder, Spine, Trace},
     DBData, DBTimestamp, OrdIndexedZSet, OrdZSet,
 };
+use bincode::{Decode, Encode};
 use size_of::{Context, SizeOf};
 use std::{
     borrow::Cow,
@@ -55,8 +56,8 @@ where
         join: F,
     ) -> Stream<C, OrdZSet<V, <I1::R as MulByRef<I2::R>>::Output>>
     where
-        I1: Batch<Time = ()> + Send,
-        I2: Batch<Key = I1::Key, Time = ()> + Send,
+        I1: Batch<Time = ()> + Send + Encode + Decode,
+        I2: Batch<Key = I1::Key, Time = ()> + Send + Encode + Decode,
         I1::R: MulByRef<I2::R>,
         <I1::R as MulByRef<I2::R>>::Output: DBData + ZRingValue,
         F: Fn(&I1::Key, &I1::Val, &I2::Val) -> V + 'static,
@@ -70,8 +71,8 @@ where
     #[track_caller]
     pub fn stream_join_generic<F, I2, Z>(&self, other: &Stream<C, I2>, join: F) -> Stream<C, Z>
     where
-        I1: Batch<Time = ()> + Send,
-        I2: Batch<Key = I1::Key, Time = ()> + Send,
+        I1: Batch<Time = ()> + Send + Encode + Decode,
+        I2: Batch<Key = I1::Key, Time = ()> + Send + Encode + Decode,
         Z: ZSet,
         I1::R: MulByRef<I2::R, Output = Z::R>,
         F: Fn(&I1::Key, &I1::Val, &I2::Val) -> Z::Key + 'static,
@@ -92,8 +93,8 @@ where
     #[track_caller]
     pub fn monotonic_stream_join<F, I2, Z>(&self, other: &Stream<C, I2>, join: F) -> Stream<C, Z>
     where
-        I1: Batch<Time = ()> + Send,
-        I2: Batch<Key = I1::Key, Time = ()> + Send,
+        I1: Batch<Time = ()> + Send + Encode + Decode,
+        I2: Batch<Key = I1::Key, Time = ()> + Send + Encode + Decode,
         Z: ZSet,
         I1::R: MulByRef<I2::R, Output = Z::R>,
         F: Fn(&I1::Key, &I1::Val, &I2::Val) -> Z::Key + 'static,
@@ -112,8 +113,8 @@ where
         location: &'static Location<'static>,
     ) -> Stream<C, Z>
     where
-        I1: BatchReader<Time = (), R = Z::R> + Clone,
-        I2: BatchReader<Key = I1::Key, Time = (), R = Z::R> + Clone,
+        I1: BatchReader<Time = (), R = Z::R> + Clone + Encode + Decode,
+        I2: BatchReader<Key = I1::Key, Time = (), R = Z::R> + Clone + Encode + Decode,
         Z: ZSet,
         Z::R: ZRingValue,
         F: Fn(&I1::Key, &I1::Val, &I2::Val) -> Z::Key + 'static,
@@ -146,8 +147,8 @@ impl<I1> Stream<RootCircuit, I1> {
         join_func: F,
     ) -> Stream<RootCircuit, Z>
     where
-        I1: IndexedZSet + Send,
-        I2: IndexedZSet<Key = I1::Key, R = I1::R> + Send,
+        I1: IndexedZSet + Send + Encode + Decode,
+        I2: IndexedZSet<Key = I1::Key, R = I1::R> + Send + Encode + Decode,
         F: Clone + Fn(&I1::Key, &I1::Val, &I2::Val) -> Z::Key + 'static,
         Z: ZSet<R = I1::R>,
         Z::R: ZRingValue,
@@ -166,7 +167,7 @@ impl<C, I1> Stream<C, I1>
 where
     C: Circuit,
     <C as WithClock>::Time: DBTimestamp,
-    I1: IndexedZSet + Send,
+    I1: IndexedZSet + Send + Encode + Decode,
     I1::R: ZRingValue,
 {
     // TODO: Derive `TS` type from circuit.
@@ -190,7 +191,7 @@ where
         join_func: F,
     ) -> Stream<C, OrdZSet<V, I1::R>>
     where
-        I2: IndexedZSet<Key = I1::Key, R = I1::R> + Send,
+        I2: IndexedZSet<Key = I1::Key, R = I1::R> + Send + Encode + Decode,
         F: Fn(&I1::Key, &I1::Val, &I2::Val) -> V + Clone + 'static,
         V: DBData,
     {
@@ -210,7 +211,7 @@ where
         join_func: F,
     ) -> Stream<C, OrdIndexedZSet<K, V, I1::R>>
     where
-        I2: IndexedZSet<Key = I1::Key, R = I1::R> + Send,
+        I2: IndexedZSet<Key = I1::Key, R = I1::R> + Send + Encode + Decode,
         F: Fn(&I1::Key, &I1::Val, &I2::Val) -> It + Clone + 'static,
         K: DBData,
         V: DBData,
@@ -223,7 +224,7 @@ where
     #[track_caller]
     pub fn join_generic<I2, F, Z, It>(&self, other: &Stream<C, I2>, join_func: F) -> Stream<C, Z>
     where
-        I2: IndexedZSet<Key = I1::Key, R = I1::R> + Send,
+        I2: IndexedZSet<Key = I1::Key, R = I1::R> + Send + Encode + Decode,
         Z: IndexedZSet<R = I1::R>,
         Z::R: MulByRef<Output = Z::R>,
         F: Fn(&I1::Key, &I1::Val, &I2::Val) -> It + Clone + 'static,
@@ -304,7 +305,7 @@ where
     /// excluding keys that are present in `other`.
     pub fn antijoin<I2>(&self, other: &Stream<C, I2>) -> Stream<C, I1>
     where
-        I2: IndexedZSet<Key = I1::Key, R = I1::R> + Send,
+        I2: IndexedZSet<Key = I1::Key, R = I1::R> + Send + Encode + Decode,
     {
         self.circuit()
             .cache_get_or_insert_with(
@@ -331,7 +332,7 @@ impl<C, Z> Stream<C, Z>
 where
     C: Circuit,
     <C as WithClock>::Time: DBTimestamp,
-    Z: IndexedZSet + Send,
+    Z: IndexedZSet + Send + Encode + Decode,
     Z::Key: Default,
     Z::Val: Default,
     Z::R: ZRingValue,
@@ -351,7 +352,7 @@ where
     ) -> Stream<C, OrdZSet<O, Z::R>>
     where
         Self: FilterMap<C, R = Z::R>,
-        Z2: IndexedZSet<Key = Z::Key, R = Z::R> + Send,
+        Z2: IndexedZSet<Key = Z::Key, R = Z::R> + Send + Encode + Decode,
         Z2::Val: Default,
         Stream<C, Z2>: FilterMap<C, R = Z::R>,
         O: DBData + Default,
@@ -376,7 +377,7 @@ where
     ) -> Stream<C, OrdZSet<O, Z::R>>
     where
         Self: for<'a> FilterMap<C, R = Z::R, ItemRef<'a> = (&'a Z::Key, &'a Z::Val)>,
-        Z2: IndexedZSet<Key = Z::Key, R = Z::R> + Send,
+        Z2: IndexedZSet<Key = Z::Key, R = Z::R> + Send + Encode + Decode,
         Z2::Val: Default,
         Stream<C, Z2>: for<'a> FilterMap<C, R = Z::R, ItemRef<'a> = (&'a Z2::Key, &'a Z2::Val)>,
         O: DBData + Default,

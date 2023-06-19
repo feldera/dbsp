@@ -7,6 +7,7 @@ use crate::{
     trace::Spine,
     DBTimestamp,
 };
+use bincode::{Decode, Encode};
 use impl_trait_for_tuples::impl_for_tuples;
 use size_of::SizeOf;
 use std::result::Result;
@@ -53,7 +54,7 @@ where
     C: Circuit,
     C::Parent: Circuit,
     <C as WithClock>::Time: DBTimestamp,
-    B: IndexedZSet + Send,
+    B: IndexedZSet + Send + Encode + Decode,
     B::R: ZRingValue,
     Spine<B>: SizeOf,
 {

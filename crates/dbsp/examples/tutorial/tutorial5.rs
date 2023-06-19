@@ -1,4 +1,5 @@
 use anyhow::Result;
+use bincode::{Decode, Encode};
 use csv::Reader;
 use dbsp::{
     operator::{
@@ -12,17 +13,7 @@ use size_of::SizeOf;
 use time::Date;
 
 #[derive(
-    Clone,
-    Debug,
-    Deserialize,
-    Eq,
-    PartialEq,
-    Ord,
-    PartialOrd,
-    Hash,
-    SizeOf,
-    bincode::Decode,
-    bincode::Encode,
+    Clone, Debug, Deserialize, Eq, PartialEq, Ord, PartialOrd, Hash, SizeOf, Decode, Encode,
 )]
 struct Record {
     location: String,

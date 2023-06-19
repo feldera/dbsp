@@ -43,6 +43,9 @@ uuid = { version = "1.1.2", features = ["v4"], optional = true }
 arc-swap = "1.5.1"
 mimalloc-rust-sys = "1.7.2"
 rand = "0.8.5"
+tarpc = { version = "0.33.0", features = ["full"] }
+futures = "0.3"
+tokio = { version = "1.25.0", features = ["macros"] }
 
     [dependencies.size-of]
     version = "0.1.5"
@@ -141,3 +144,11 @@ path = "examples/tutorial/tutorial8.rs"
 [[example]]
 name = "tutorial9"
 path = "examples/tutorial/tutorial9.rs"
+
+[[example]]
+name = "coord"
+path = "examples/dist/coord.rs"
+
+[[example]]
+name = "pool"
+path = "examples/dist/pool.rs"

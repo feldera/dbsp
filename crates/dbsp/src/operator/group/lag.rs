@@ -1,3 +1,5 @@
+use bincode::{Decode, Encode};
+
 use super::{GroupTransformer, Monotonicity};
 use crate::{
     algebra::{HasZero, ZRingValue},
@@ -13,7 +15,7 @@ const MAX_RETRACTIONS_CAPACITY: usize = 100_000usize;
 
 impl<B> Stream<RootCircuit, B>
 where
-    B: IndexedZSet + Send,
+    B: IndexedZSet + Send + Encode + Decode,
 {
     /// Lag operator matches each row in a group with a previous row in the
     /// same group.
