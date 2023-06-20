@@ -6,11 +6,13 @@ use anyhow::Error as AnyError;
 use bincode::{Decode, Encode};
 use core::fmt;
 use crossbeam::channel::{bounded, Receiver, Sender, TryRecvError};
+use itertools::Either;
 use serde::{Deserialize, Serialize};
 use std::{
     fmt::Debug,
     fs,
     fs::create_dir_all,
+    iter::empty,
     net::SocketAddr,
     ops::Range,
     path::{Path, PathBuf},
@@ -125,6 +127,23 @@ impl Layout {
                 local_host_idx,
                 ..
             } => hosts[*local_host_idx].workers.clone(),
+        }
+    }
+
+    /// Returns an iterator over `Host`s in this layout other than this one.  If
+    /// this is a single-host layout, this will be an empty iterator.
+    pub fn other_hosts(&self) -> impl Iterator<Item = &Host> {
+        match self {
+            Self::Solo { .. } => Either::Left(empty()),
+            Self::Multihost {
+                hosts,
+                local_host_idx,
+            } => Either::Right(
+                hosts
+                    .iter()
+                    .enumerate()
+                    .filter_map(|(i, host)| (i != *local_host_idx).then_some(host)),
+            ),
         }
     }
 

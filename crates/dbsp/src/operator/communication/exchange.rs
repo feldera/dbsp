@@ -100,18 +100,13 @@ struct Clients(Vec<(Host, TokioOnceCell<ExchangeServiceClient>)>);
 
 impl Clients {
     fn new(runtime: &Runtime) -> Clients {
-        Self(match runtime.layout() {
-            Layout::Solo { .. } => Vec::new(),
-            Layout::Multihost {
-                hosts,
-                local_host_idx,
-            } => hosts
-                .iter()
-                .enumerate()
-                .filter_map(|(idx, host)| (idx != *local_host_idx).then_some(host))
+        Self(
+            runtime
+                .layout()
+                .other_hosts()
                 .map(|host| (host.clone(), TokioOnceCell::new()))
                 .collect(),
-        })
+        )
     }
 
     /// Returns the client for `worker`, which must be a remote worker ID.
