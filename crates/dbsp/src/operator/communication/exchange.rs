@@ -10,7 +10,7 @@ use crate::{
     circuit::{
         metadata::OperatorLocation,
         operator_traits::{Operator, SinkOperator, SourceOperator},
-        Layout, LocalStoreMarker, OwnershipPreference, Runtime, Scope,
+        Host, Layout, LocalStoreMarker, OwnershipPreference, Runtime, Scope,
     },
     circuit_cache_key,
 };
@@ -36,7 +36,6 @@ use std::{
         atomic::{AtomicBool, AtomicUsize, Ordering},
         Arc, Mutex, RwLock,
     },
-    thread::sleep,
 };
 use tarpc::{
     client::{self, RpcError},
@@ -49,7 +48,8 @@ use tarpc::{
 use time::Duration;
 use tokio::{
     runtime::{Handle as TokioHandle, Runtime as TokioRuntime},
-    sync::Notify,
+    sync::{Notify, OnceCell as TokioOnceCell},
+    time::sleep,
 };
 use typedmap::TypedMapKey;
 
@@ -94,54 +94,48 @@ impl ExchangeService for ExchangeServer {
 }
 
 // Maps from a range of worker IDs to the RPC client used to contact those
-// workers.  `None` as an RPC client means that the workers are in the current
-// process.
-struct Clients(Vec<(Range<usize>, Option<ExchangeServiceClient>)>);
+// workers.  Only worker IDs for remote workers appear in the map.
+struct Clients(Vec<(Host, TokioOnceCell<ExchangeServiceClient>)>);
 
 impl Clients {
     fn new(runtime: &Runtime) -> Clients {
         Self(match runtime.layout() {
-            Layout::Solo { n_workers } => vec![(0..*n_workers, None)],
+            Layout::Solo { .. } => Vec::new(),
             Layout::Multihost {
                 hosts,
                 local_host_idx,
             } => hosts
                 .iter()
                 .enumerate()
-                .map(|(idx, host)| {
-                    let client = if idx != *local_host_idx {
-                        Some({
-                            let _guard = TOKIO.enter();
-                            let mut transport = connect(host.address, Bincode::default);
-                            transport.config_mut().max_frame_length(usize::MAX);
-                            // XXX Blocking here could cause deadlock?  We should connect
-                            // asynchronously.
-                            sleep(std::time::Duration::from_millis(1000));
-                            println!("connecting to {}", host.address);
-                            let transport = TOKIO.block_on(transport).unwrap();
-                            println!("connected to {}", host.address);
-                            ExchangeServiceClient::new(client::Config::default(), transport).spawn()
-                        })
-                    } else {
-                        None
-                    };
-                    (host.workers.clone(), client)
-                })
+                .filter_map(|(idx, host)| (idx != *local_host_idx).then_some(host))
+                .map(|host| (host.clone(), TokioOnceCell::new()))
                 .collect(),
         })
     }
-}
 
-impl Index<usize> for Clients {
-    type Output = Option<ExchangeServiceClient>;
-    // Indexing `Clients` with a worker ID yields the corresponding client.
-    fn index(&self, worker: usize) -> &Option<ExchangeServiceClient> {
-        for (workers, host) in self.0.iter() {
-            if workers.contains(&worker) {
-                return host;
-            }
-        }
-        unreachable!();
+    /// Returns the client for `worker`, which must be a remote worker ID.
+    async fn get(&self, worker: usize) -> &ExchangeServiceClient {
+        let (host, cell) = self
+            .0
+            .iter()
+            .find(|(host, _client)| host.workers.contains(&worker))
+            .unwrap();
+        cell.get_or_init(|| async {
+            let transport = loop {
+                let mut transport = connect(host.address, Bincode::default);
+                transport.config_mut().max_frame_length(usize::MAX);
+                match transport.await {
+                    Ok(transport) => break transport,
+                    Err(error) => println!(
+                        "connection to {} failed ({error}), waiting to retry",
+                        host.address
+                    ),
+                }
+                sleep(std::time::Duration::from_millis(1000)).await;
+            };
+            ExchangeServiceClient::new(client::Config::default(), transport).spawn()
+        })
+        .await
     }
 }
 
@@ -441,7 +435,7 @@ where
                 let n = remote_items.len();
                 let mut waiters = Vec::with_capacity(n);
                 for (receiver, item) in remote_items.into_iter() {
-                    let client = inner.clients[receiver].as_ref().unwrap();
+                    let client = inner.clients.get(receiver).await;
                     waiters.push(client.exchange(
                         context::current(),
                         bincode::encode_to_vec(item, bincode::config::standard()).unwrap(),
