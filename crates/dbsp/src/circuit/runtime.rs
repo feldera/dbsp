@@ -146,10 +146,10 @@ impl Runtime {
         let layout = layout.into_layout();
         let workers = layout.local_workers();
         let nworkers = workers.len();
-        let runtime = Self(Arc::new(RuntimeInner::new(layout.clone())));
+        let runtime = Self(Arc::new(RuntimeInner::new(layout)));
 
         let mut handles = Vec::with_capacity(nworkers);
-        handles.extend(workers.clone().map(|worker_index| {
+        handles.extend(workers.map(|worker_index| {
             let runtime = runtime.clone();
             let build_circuit = circuit.clone();
 

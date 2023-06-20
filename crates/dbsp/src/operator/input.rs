@@ -541,7 +541,7 @@ where
                     .entry(InputId::new(input_id))
                     .or_insert_with(|| {
                         Self(Arc::new(InputHandleInternal::new(
-                            runtime.layout().local_workers().clone(),
+                            runtime.layout().local_workers(),
                         )))
                     })
                     .value()

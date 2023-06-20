@@ -24,6 +24,7 @@ use std::{
 use crate::circuit::circuit_builder::Stream;
 
 /// A host for some workers in the [`Layout`] for a multi-host DBSP circuit.
+#[allow(clippy::manual_non_exhaustive)]
 #[derive(Clone, Decode, Encode, Serialize, Deserialize)]
 pub struct Host {
     /// The IP address and TCP port on which the host listens and to which the
