@@ -67,7 +67,9 @@ circuit_cache_key!(local ExchangeCacheId<T>(ExchangeId => Arc<Exchange<T>>));
 
 #[tarpc::service]
 trait ExchangeService {
-    async fn exchange(data: Vec<u8>, exchange_id: usize, sender: usize, receiver: usize);
+    /// Sends a message to all of the worker threads in `exchange_id` on the
+    /// server that processes this message from `sender`.
+    async fn exchange(exchange_id: usize, sender: usize, data: Vec<Vec<u8>>);
 }
 
 type ExchangeId = usize;
@@ -83,13 +85,12 @@ impl ExchangeService for ExchangeServer {
     async fn exchange(
         self,
         _: context::Context,
-        data: Vec<u8>,
         exchange_id: ExchangeId,
         sender: usize,
-        receiver: usize,
+        data: Vec<Vec<u8>>,
     ) {
         let inner = self.0.read().unwrap().get(&exchange_id).unwrap().clone();
-        inner.received(data, sender, receiver).await;
+        inner.received(sender, data).await;
     }
 }
 
@@ -192,18 +193,27 @@ impl InnerExchange {
         }
     }
 
-    async fn received(self: &Arc<Self>, data: Vec<u8>, sender: usize, receiver: usize) {
-        let index = sender * self.npeers + receiver;
+    /// Receives a round of messages from `sender` in `data`, which must have an
+    /// element for every local worker thread.
+    async fn received(self: &Arc<Self>, sender: usize, data: Vec<Vec<u8>>) {
+        let local_workers = self.runtime.layout().local_workers();
+        assert_eq!(data.len(), local_workers.len());
 
-        (self.deliver)(data, sender, receiver);
+        for (receiver, data) in local_workers.clone().zip(data.into_iter()) {
+            (self.deliver)(data, sender, receiver);
 
-        let old_counter = self.receiver_counters[receiver].fetch_add(1, Ordering::AcqRel);
-        if old_counter >= self.npeers - 1 {
-            if let Some(cb) = self.receiver_callbacks[receiver].get() {
-                cb()
+            let old_counter = self.receiver_counters[receiver].fetch_add(1, Ordering::AcqRel);
+            if old_counter >= self.npeers - 1 {
+                if let Some(cb) = self.receiver_callbacks[receiver].get() {
+                    cb()
+                }
             }
         }
-        self.sender_notifies[index].notified().await;
+        for receiver in local_workers {
+            self.sender_notifies[self.mailbox_index(sender, receiver)]
+                .notified()
+                .await;
+        }
     }
 
     /// Returns an index for the sender/receiver pair.
@@ -409,51 +419,58 @@ where
 
         // The range of worker IDs running on this host.
         let local_workers = self.runtime.layout().local_workers();
+        let ranges = match self.runtime.layout() {
+            Layout::Solo { .. } => vec![local_workers.clone()],
+            Layout::Multihost { hosts, .. } => {
+                hosts.iter().map(|host| host.workers.clone()).collect()
+            }
+        };
 
-        // Send messages to the peers on the same host as us, and save the
-        // others to send to remote peers.
-        let mut remote_items = Vec::with_capacity(npeers - local_workers.len());
-        for receiver in 0..npeers {
-            let item = data.next().unwrap();
-            if local_workers.contains(&receiver) {
-                *self.mailbox(sender, receiver).lock().unwrap() = Some(item);
-                let old_counter =
-                    self.inner.receiver_counters[receiver].fetch_add(1, Ordering::AcqRel);
-                if old_counter >= npeers - 1 {
-                    if let Some(cb) = self.inner.receiver_callbacks[receiver].get() {
-                        cb()
+        for workers in ranges {
+            if workers == local_workers {
+                // Send messages to workers on the same host as us.
+                for receiver in workers {
+                    let item = data.next().unwrap();
+                    *self.mailbox(sender, receiver).lock().unwrap() = Some(item);
+                    let old_counter =
+                        self.inner.receiver_counters[receiver].fetch_add(1, Ordering::AcqRel);
+                    if old_counter >= npeers - 1 {
+                        if let Some(cb) = self.inner.receiver_callbacks[receiver].get() {
+                            cb()
+                        }
                     }
                 }
             } else {
-                remote_items.push((receiver, item));
-            }
-        }
+                // Send messages to workers on a remote host.
+                let mut items = Vec::with_capacity(workers.len());
+                for _ in workers.clone() {
+                    items.push(data.next().unwrap());
+                }
 
-        if !remote_items.is_empty() {
-            let inner = self.inner.clone();
-            TOKIO.spawn(async move {
-                let n = remote_items.len();
-                let mut waiters = Vec::with_capacity(n);
-                for (receiver, item) in remote_items.into_iter() {
-                    let client = inner.clients.get(receiver).await;
-                    waiters.push(client.exchange(
-                        context::current(),
-                        bincode::encode_to_vec(item, bincode::config::standard()).unwrap(),
-                        inner.exchange_id,
-                        sender,
-                        receiver,
-                    ));
-                }
-                for waiter in waiters {
-                    waiter.await.unwrap();
-                }
-                let old_counter = inner.sender_counters[sender].fetch_add(n, Ordering::AcqRel);
-                if old_counter >= npeers - n {
-                    if let Some(cb) = inner.sender_callbacks[sender].get() {
-                        cb()
+                let inner = self.inner.clone();
+                TOKIO.spawn(async move {
+                    let client = inner.clients.get(workers.start).await;
+
+                    let items = items
+                        .iter()
+                        .map(|item| {
+                            bincode::encode_to_vec(item, bincode::config::standard()).unwrap()
+                        })
+                        .collect();
+
+                    client
+                        .exchange(context::current(), inner.exchange_id, sender, items)
+                        .await
+                        .unwrap();
+                    let n = workers.len();
+                    let old_counter = inner.sender_counters[sender].fetch_add(n, Ordering::AcqRel);
+                    if old_counter >= npeers - n {
+                        if let Some(cb) = inner.sender_callbacks[sender].get() {
+                            cb()
+                        }
                     }
-                }
-            });
+                });
+            }
         }
         true
     }
