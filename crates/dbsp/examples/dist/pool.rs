@@ -112,23 +112,14 @@ impl Circuit for Server {
         self.replace(layout);
         future::ready(())
     }
-    type AppendFut = Ready<()>;
-    fn append(self, _: context::Context, mut records: Vec<(Record, isize)>) -> Self::AppendFut {
-        println!("add {} records", records.len());
+    type RunFut = Ready<Vec<(String, VaxMonthly, isize)>>;
+    fn run(self, _: context::Context, mut records: Vec<(Record, isize)>) -> Self::RunFut {
         self.inner()
             .as_ref()
             .unwrap()
             .input_handle
             .append(&mut records);
-        future::ready(())
-    }
-    type StepFut = Ready<()>;
-    fn step(self, _: context::Context) -> Self::StepFut {
         self.inner().as_mut().unwrap().circuit.step().unwrap();
-        future::ready(())
-    }
-    type OutputFut = Ready<Vec<(String, VaxMonthly, isize)>>;
-    fn output(self, _: context::Context) -> Self::OutputFut {
         future::ready(
             self.inner()
                 .as_ref()

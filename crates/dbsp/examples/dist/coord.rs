@@ -58,31 +58,29 @@ async fn main() -> AnyResult<()> {
     );
     let mut reader = Reader::from_path(path)?;
     let mut input_records = reader.deserialize();
-    for (i, client) in clients.iter().enumerate().cycle() {
-        let mut batch = Vec::new();
-        while batch.len() < 500 {
+    let mut next_client =  (0..clients.len()).cycle();
+    loop {
+        let mut batches: Vec<_> = (0..clients.len()).map(|_| Vec::new()).collect();
+        let mut n = 0;
+        while n < 500 {
             let Some(record) = input_records.next() else { break };
-            batch.push((record?, 1));
+            batches[next_client.next().unwrap()].push((record?, 1));
+            n += 1;
         }
-        if batch.is_empty() {
+        if n == 0 {
             break;
         }
-        println!("Input {} records to {i}:", batch.len());
-        client.append(context::current(), batch).await?;
 
+        println!("Input {} records:", n);
         let mut joins = Vec::new();
-        for client in clients.iter() {
+        for (client, input) in clients.iter().zip(batches.into_iter()) {
             let client = client.clone();
             joins.push(spawn(async move {
-                client.step(context::current()).await.unwrap();
+                client.run(context::current(), input).await.unwrap()
             }));
         }
-        for join in joins {
-            join.await?;
-        }
-
-        for (i, client) in clients.iter().enumerate() {
-            let output = client.output(context::current()).await.unwrap();
+        for (i, join) in joins.into_iter().enumerate() {
+            let output = join.await?;
             output
                 .iter()
                 .for_each(|(l, VaxMonthly { count, year, month }, w)| {

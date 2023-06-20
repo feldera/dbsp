@@ -48,7 +48,5 @@ pub struct VaxMonthly {
 #[tarpc::service]
 pub trait Circuit {
     async fn init(layout: Layout);
-    async fn append(records: Vec<(Record, isize)>);
-    async fn output() -> Vec<(String, VaxMonthly, isize)>;
-    async fn step();
+    async fn run(records: Vec<(Record, isize)>) -> Vec<(String, VaxMonthly, isize)>;
 }
