@@ -67,9 +67,12 @@ circuit_cache_key!(local ExchangeCacheId<T>(ExchangeId => Arc<Exchange<T>>));
 
 #[tarpc::service]
 trait ExchangeService {
-    /// Sends a message to all of the worker threads in `exchange_id` on the
-    /// server that processes this message from `sender`.
-    async fn exchange(exchange_id: usize, sender: usize, data: Vec<Vec<u8>>);
+    /// Sends messages in `exchange_id` from all of the worker threads in
+    /// `senders` to all of the worker threads `receivers` in the server that
+    /// processes the message.  The Bincode-encoded message from `sender` to
+    /// `receiver` is `data[sender - senders.start][receiver -
+    /// receivers.start]`.
+    async fn exchange(exchange_id: usize, senders: Range<usize>, data: Vec<Vec<Vec<u8>>>);
 }
 
 type ExchangeId = usize;
@@ -86,11 +89,11 @@ impl ExchangeService for ExchangeServer {
         self,
         _: context::Context,
         exchange_id: ExchangeId,
-        sender: usize,
-        data: Vec<Vec<u8>>,
+        senders: Range<usize>,
+        data: Vec<Vec<Vec<u8>>>,
     ) {
         let inner = self.0.read().unwrap().get(&exchange_id).unwrap().clone();
-        inner.received(sender, data).await;
+        inner.received(senders, data).await;
     }
 }
 
@@ -153,6 +156,9 @@ struct InnerExchange {
     sender_counters: Vec<CachePadded<AtomicUsize>>,
     /// Callback invoked when all `npeers` mailboxes are available.
     sender_callbacks: Vec<OnceCell<Box<dyn Fn() + Send + Sync>>>,
+    /// The number of workers that have already sent their messages in the
+    /// current round.
+    sent: AtomicUsize,
     /// The RPC clients to contact remote hosts.
     clients: Arc<Clients>,
     /// For each sender/receiver worker pair involved in RPC, this allows the
@@ -185,29 +191,43 @@ impl InnerExchange {
                 .collect(),
             sender_callbacks: (0..npeers).map(|_| OnceCell::new()).collect(),
             deliver: Box::new(deliver),
+            sent: AtomicUsize::new(0),
         }
     }
 
-    /// Receives a round of messages from `sender` in `data`, which must have an
-    /// element for every local worker thread.
-    async fn received(self: &Arc<Self>, sender: usize, data: Vec<Vec<u8>>) {
-        let local_workers = self.runtime.layout().local_workers();
-        assert_eq!(data.len(), local_workers.len());
+    /// Receives messages sent from all of the worker threads in `senders` to
+    /// all of the local worker threads `receivers` in `self`.  The
+    /// Bincode-encoded `Vec<u8>` message from `sender` to `receiver` is
+    /// `data[sender - senders.start][receiver - receivers.start]`.
+    async fn received(self: &Arc<Self>, senders: Range<usize>, data: Vec<Vec<Vec<u8>>>) {
+        let receivers = self.runtime.layout().local_workers();
 
-        for (receiver, data) in local_workers.clone().zip(data.into_iter()) {
-            (self.deliver)(data, sender, receiver);
+        // Deliver all of the data into the exchange's mailboxes.
+        for (sender, data) in senders.clone().zip(data.into_iter()) {
+            assert_eq!(data.len(), receivers.len());
+            for (receiver, data) in receivers.clone().zip(data.into_iter()) {
+                (self.deliver)(data, sender, receiver);
+            }
+        }
 
-            let old_counter = self.receiver_counters[receiver].fetch_add(1, Ordering::AcqRel);
-            if old_counter >= self.npeers - 1 {
+        // Increment the receiver counters and deliver callbacks if necessary.
+        for receiver in receivers.clone() {
+            let n = senders.len();
+            let old_counter = self.receiver_counters[receiver].fetch_add(n, Ordering::AcqRel);
+            if old_counter >= self.npeers - n {
                 if let Some(cb) = self.receiver_callbacks[receiver].get() {
                     cb()
                 }
             }
         }
-        for receiver in local_workers {
-            self.sender_notifies[self.mailbox_index(sender, receiver)]
-                .notified()
-                .await;
+
+        // Wait for the receivers to pick up their mail before returning.
+        for sender in senders {
+            for receiver in receivers.clone() {
+                self.sender_notifies[self.mailbox_index(sender, receiver)]
+                    .notified()
+                    .await;
+            }
         }
     }
 
@@ -414,59 +434,89 @@ where
 
         // The range of worker IDs running on this host.
         let local_workers = self.runtime.layout().local_workers();
-        let ranges = match self.runtime.layout() {
-            Layout::Solo { .. } => vec![local_workers.clone()],
-            Layout::Multihost { hosts, .. } => {
-                hosts.iter().map(|host| host.workers.clone()).collect()
-            }
-        };
 
-        for workers in ranges {
-            if workers == local_workers {
-                // Send messages to workers on the same host as us.
-                for receiver in workers {
-                    let item = data.next().unwrap();
-                    *self.mailbox(sender, receiver).lock().unwrap() = Some(item);
-                    let old_counter =
-                        self.inner.receiver_counters[receiver].fetch_add(1, Ordering::AcqRel);
-                    if old_counter >= npeers - 1 {
-                        if let Some(cb) = self.inner.receiver_callbacks[receiver].get() {
-                            cb()
-                        }
+        // Deliver all of the data to local mailboxes.
+        for receiver in 0..npeers {
+            *self.mailbox(sender, receiver).lock().unwrap() = data.next();
+
+            if local_workers.contains(&receiver) {
+                let old_counter =
+                    self.inner.receiver_counters[receiver].fetch_add(1, Ordering::AcqRel);
+                if old_counter >= npeers - 1 {
+                    if let Some(cb) = self.inner.receiver_callbacks[receiver].get() {
+                        cb()
                     }
                 }
-            } else {
-                // Send messages to workers on a remote host.
-                let mut items = Vec::with_capacity(workers.len());
-                for _ in workers.clone() {
-                    items.push(data.next().unwrap());
-                }
-
-                let inner = self.inner.clone();
-                TOKIO.spawn(async move {
-                    let client = inner.clients.get(workers.start).await;
-
-                    let items = items
-                        .iter()
-                        .map(|item| {
-                            bincode::encode_to_vec(item, bincode::config::standard()).unwrap()
-                        })
-                        .collect();
-
-                    client
-                        .exchange(context::current(), inner.exchange_id, sender, items)
-                        .await
-                        .unwrap();
-                    let n = workers.len();
-                    let old_counter = inner.sender_counters[sender].fetch_add(n, Ordering::AcqRel);
-                    if old_counter >= npeers - n {
-                        if let Some(cb) = inner.sender_callbacks[sender].get() {
-                            cb()
-                        }
-                    }
-                });
             }
         }
+
+        // In a single-host layout, or if some of our local workers haven't yet
+        // sent in this round, we're all done for now.
+        if npeers == local_workers.len()
+            || self.inner.sent.fetch_add(1, Ordering::AcqRel) + 1 != local_workers.len()
+        {
+            return true;
+        }
+        self.inner.sent.store(0, Ordering::Release);
+
+        // All of the local workers have sent their data in this round.  Take
+        // all of their data and send it to the remote hosts.
+        let this = self.clone();
+        TOKIO.spawn(async move {
+            let mut futures = Vec::new();
+
+            // For each range of worker IDs `receivers` on a remote host,
+            // accumulate all of the data from our local `senders` to all
+            // of the `receivers` on that host.
+            let senders = this.runtime.layout().local_workers();
+            for host in this.runtime.layout().other_hosts() {
+                let receivers = &host.workers;
+                let items: Vec<Vec<_>> = senders
+                    .clone()
+                    .map(|sender| {
+                        receivers
+                            .clone()
+                            .map(|receiver| {
+                                let item = this
+                                    .mailbox(sender, receiver)
+                                    .lock()
+                                    .unwrap()
+                                    .take()
+                                    .unwrap();
+                                bincode::encode_to_vec(item, bincode::config::standard()).unwrap()
+                            })
+                            .collect()
+                    })
+                    .collect();
+
+                let client = this.inner.clients.get(receivers.start).await;
+
+                // Send it.
+                futures.push(client.exchange(
+                    context::current(),
+                    this.inner.exchange_id,
+                    senders.clone(),
+                    items,
+                ));
+            }
+
+            // Wait for each send to complete.
+            for future in futures {
+                future.await.unwrap();
+            }
+
+            // Record that the sends completed.
+            let n = npeers - senders.len();
+            for sender in senders {
+                let old_counter = this.inner.sender_counters[sender].fetch_add(n, Ordering::AcqRel);
+                if old_counter >= npeers - n {
+                    if let Some(cb) = this.inner.sender_callbacks[sender].get() {
+                        cb()
+                    }
+                }
+            }
+        });
+
         true
     }
 
