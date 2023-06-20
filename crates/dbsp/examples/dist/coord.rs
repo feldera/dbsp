@@ -31,18 +31,16 @@ async fn main() -> AnyResult<()> {
     let mut clients: Vec<_> = Vec::new();
     let mut join_handles: Vec<_> = Vec::new();
     let nworkers = 4;
-    for (i, &server_addr) in pool.iter().enumerate() {
+    let hosts = exchange
+        .iter()
+        .map(|&address| (address, nworkers))
+        .collect();
+    for (server_addr, exchange_addr) in pool.iter().zip(exchange.iter()) {
         let mut transport = tarpc::serde_transport::tcp::connect(server_addr, Bincode::default);
         transport.config_mut().max_frame_length(usize::MAX);
 
         let client = CircuitClient::new(client::Config::default(), transport.await?).spawn();
-        let layout = Layout::new_multihost(
-            exchange
-                .iter()
-                .map(|&address| (address, nworkers))
-                .collect(),
-            i,
-        );
+        let layout = Layout::new_multihost(&hosts, *exchange_addr);
         println!("{layout:?}");
         let client2 = client.clone();
         join_handles.push(spawn(async move {

@@ -73,30 +73,41 @@ impl Layout {
     }
 
     /// Returns a new multihost layout with as many hosts as specified in
-    /// `params`.  Each tuple in `params` specifies a host's network address and
-    /// the number of workers to run on that host.
+    /// `params`.  Each tuple in `params` specifies a host's unique network
+    /// address and the number of workers to run on that host.  `local_address`
+    /// must be one of the addresses in `params`.
     ///
     /// To execute such a multihost circuit, one must create a `Runtime` for it
     /// on every host in `params`, passing the same `params` in each case.  Each
-    /// host must pass a unique `local_host_idx` such that
-    /// `params[local_host_idx]` is its own address.  Each host listens on its
-    /// own address and connects to all of the other addresses.
-    pub fn new_multihost(params: Vec<(SocketAddr, usize)>, local_host_idx: usize) -> Layout {
-        assert!(params.len() > 0);
-        assert!(local_host_idx < params.len());
+    /// host must pass its own `local_address`.  The `Runtime` on each host
+    /// listens on its own address and connects to all of the other addresses.
+    pub fn new_multihost(params: &Vec<(SocketAddr, usize)>, local_address: SocketAddr) -> Layout {
+        // Find `local_address` in `params` and make sure that it's unique.
+        let local_host_idx = params
+            .iter()
+            .position(|(address, _)| *address == local_address)
+            .unwrap();
+        debug_assert_eq!(
+            params
+                .iter()
+                .rposition(|(address, _)| *address == local_address)
+                .unwrap(),
+            local_host_idx
+        );
+
         if params.len() == 1 {
             Self::new_solo(params[0].1)
         } else {
             let mut hosts = Vec::with_capacity(params.len());
             let mut total_workers = 0;
             for (address, n_workers) in params {
-                assert_ne!(n_workers, 0);
+                assert_ne!(*n_workers, 0);
                 hosts.push(Host {
-                    address,
-                    workers: total_workers..total_workers + n_workers,
+                    address: *address,
+                    workers: total_workers..total_workers + *n_workers,
                     _private: (),
                 });
-                total_workers += n_workers;
+                total_workers += *n_workers;
             }
             Layout::Multihost {
                 hosts,
@@ -134,9 +145,7 @@ impl Layout {
     pub fn n_workers(&self) -> usize {
         match self {
             Self::Solo { n_workers } => *n_workers,
-            Self::Multihost { hosts, .. } => {
-                hosts.iter().map(|host| host.workers.len()).sum()
-            }
+            Self::Multihost { hosts, .. } => hosts.iter().map(|host| host.workers.len()).sum(),
         }
     }
 }
