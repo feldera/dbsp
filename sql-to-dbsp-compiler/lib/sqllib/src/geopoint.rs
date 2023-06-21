@@ -1,13 +1,27 @@
 // I cannot use the standard geopoint object because it doesn't implement Ord
 
 use ::serde::{Deserialize, Serialize};
+use bincode::Decode;
+use bincode::Encode;
 use dbsp::algebra::F64;
 use geo::EuclideanDistance;
 use geo::Point;
 use size_of::*;
 
 #[derive(
-    Default, Eq, Ord, Clone, Hash, PartialEq, PartialOrd, SizeOf, Serialize, Deserialize, Debug,
+    Default,
+    Eq,
+    Ord,
+    Clone,
+    Hash,
+    PartialEq,
+    PartialOrd,
+    SizeOf,
+    Serialize,
+    Deserialize,
+    Debug,
+    Encode,
+    Decode,
 )]
 pub struct GeoPoint(F64, F64);
 

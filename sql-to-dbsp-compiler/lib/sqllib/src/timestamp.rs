@@ -1,6 +1,7 @@
 //! Support for SQL Timestamp and Date data types.
 
 use crate::interval::{LongInterval, ShortInterval};
+use bincode::{Decode, Encode};
 use chrono::{DateTime, Datelike, NaiveDate, NaiveDateTime, NaiveTime, TimeZone, Timelike, Utc};
 use serde::{de::Error as _, ser::Error as _, Deserialize, Deserializer, Serialize, Serializer};
 use size_of::SizeOf;
@@ -12,7 +13,7 @@ use std::{
 /// Similar to a unix timestamp: a positive time interval between Jan 1 1970 and
 /// the current time. The supported range is limited (e.g., up to 2038 in
 /// MySQL). We use milliseconds to represent the interval.
-#[derive(Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, SizeOf)]
+#[derive(Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, SizeOf, Encode, Decode)]
 pub struct Timestamp {
     // since unix epoch
     milliseconds: i64,
@@ -483,7 +484,9 @@ pub fn floor_TimestampN_week(value: Option<Timestamp>) -> Option<Timestamp> {
 
 ////////////////////////////
 
-#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, SizeOf)]
+#[derive(
+    Debug, Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, SizeOf, Encode, Decode,
+)]
 pub struct Date {
     // since unix epoch
     days: i32,

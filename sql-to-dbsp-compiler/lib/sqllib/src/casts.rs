@@ -20,11 +20,10 @@
 
 #![allow(non_snake_case)]
 
-use crate::{geopoint::*, interval::*, timestamp::*};
+use crate::{decimal::*, geopoint::*, interval::*, timestamp::*};
 use chrono::{Datelike, NaiveDate, NaiveDateTime, Timelike};
 use dbsp::algebra::{HasOne, HasZero, F32, F64};
 use num::{FromPrimitive, One, ToPrimitive, Zero};
-use rust_decimal::Decimal;
 
 /////////// cast to b
 

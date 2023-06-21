@@ -1,15 +1,15 @@
 #![allow(non_snake_case)]
 
 pub mod casts;
+pub mod decimal;
 pub mod geopoint;
 pub mod interval;
 pub mod timestamp;
 
-use crate::interval::ShortInterval;
+use crate::{decimal::*, interval::ShortInterval};
 use dbsp::algebra::{Semigroup, SemigroupValue, ZRingValue, F32, F64};
 use geopoint::GeoPoint;
-use num::{Signed, ToPrimitive};
-use rust_decimal::{Decimal, MathematicalOps};
+use num::ToPrimitive;
 use std::fmt::Debug;
 use std::marker::PhantomData;
 use std::ops::Add;

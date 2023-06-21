@@ -5,8 +5,7 @@
 //! to SqlRow objects when they need to be displayed.
 
 use dbsp::algebra::{F32, F64};
-use rust_decimal::Decimal;
-use sqllib::casts::*;
+use sqllib::{casts::*, decimal::*};
 
 #[derive(Debug)]
 pub enum SqlValue {

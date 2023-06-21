@@ -14,4 +14,4 @@ size-of = { version = "0.1.5", features = ["rust_decimal"] }
 serde = { version = "1.0", features = ["derive"] }
 num = { version = "0.4.0" }
 chrono = { version = "0.4.23" }
-
+bincode = { version = "2.0.0-rc.2", features = ["serde"] }
