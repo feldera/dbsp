@@ -45,7 +45,7 @@ mimalloc-rust-sys = "1.7.2"
 rand = "0.8.5"
 tarpc = { version = "0.33.0", features = ["full"] }
 futures = "0.3"
-tokio = { version = "1.25.0", features = ["macros"] }
+tokio = { version = "1.25.0", features = ["macros", "rt", "rt-multi-thread"] }
 
     [dependencies.size-of]
     version = "0.1.5"
