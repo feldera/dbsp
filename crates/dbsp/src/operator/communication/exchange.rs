@@ -5,49 +5,37 @@
 // TODO: We may want to generalize these operators to implement N-to-M
 // communication, including 1-to-N and N-to-1.
 
-#![allow(unused_imports)]
 use crate::{
     circuit::{
         metadata::OperatorLocation,
         operator_traits::{Operator, SinkOperator, SourceOperator},
-        Host, Layout, LocalStoreMarker, OwnershipPreference, Runtime, Scope,
+        Host, LocalStoreMarker, OwnershipPreference, Runtime, Scope,
     },
     circuit_cache_key,
 };
 use bincode::{decode_from_slice, Decode, Encode};
 
 use crossbeam_utils::CachePadded;
-use futures::{
-    future::{self, join_all, JoinAll, Ready},
-    prelude::*,
-};
-use itertools::Itertools;
+use futures::{future, prelude::*};
 use once_cell::sync::{Lazy, OnceCell};
-use rand::distributions::Uniform;
-use serde::{de::DeserializeOwned, Serialize};
 use std::{
     borrow::Cow,
     collections::HashMap,
-    iter::empty,
     marker::PhantomData,
-    net::SocketAddr,
-    ops::{Index, Range},
+    ops::Range,
     sync::{
-        atomic::{AtomicBool, AtomicUsize, Ordering},
+        atomic::{AtomicUsize, Ordering},
         Arc, Mutex, RwLock,
     },
 };
 use tarpc::{
-    client::{self, RpcError},
-    context,
+    client, context,
     serde_transport::tcp::{connect, listen},
-    server::{self, incoming::Incoming, BaseChannel, Channel},
+    server::{self, Channel},
     tokio_serde::formats::Bincode,
-    transport::channel,
 };
-use time::Duration;
 use tokio::{
-    runtime::{Handle as TokioHandle, Runtime as TokioRuntime},
+    runtime::Runtime as TokioRuntime,
     sync::{Notify, OnceCell as TokioOnceCell},
     time::sleep,
 };
@@ -926,13 +914,6 @@ where
         debug_assert!(res);
         combined
     }
-}
-
-#[derive(Hash, PartialEq, Eq)]
-struct ServerId;
-
-impl TypedMapKey<LocalStoreMarker> for ServerId {
-    type Value = (ExchangeServiceClient, ExchangeServer);
 }
 
 #[derive(Hash, PartialEq, Eq)]
