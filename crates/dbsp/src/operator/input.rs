@@ -688,13 +688,14 @@ where
         // rest will receive `quotient`.
         let quotient = vals.len() / num_partitions;
         let remainder = vals.len() % num_partitions;
+        let worker_ofs = self.input_handle.workers().start;
         for i in 0..num_partitions {
             let mut partition_size = quotient;
             if i < remainder {
                 partition_size += 1;
             }
 
-            let worker = (next_worker + i) % num_partitions + self.input_handle.workers().start;
+            let worker = (next_worker + i) % num_partitions + worker_ofs;
             if partition_size == vals.len() {
                 self.input_handle.update_for_worker(worker, |tuples| {
                     if tuples.is_empty() {
