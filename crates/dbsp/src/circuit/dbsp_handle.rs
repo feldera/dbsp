@@ -9,7 +9,9 @@ use crossbeam::channel::{bounded, Receiver, Sender, TryRecvError};
 use itertools::Either;
 use serde::{Deserialize, Serialize};
 use std::{
-    fmt::Debug,
+    collections::HashSet,
+    error::Error as StdError,
+    fmt::{Debug, Display, Error as FmtError, Formatter},
     fs,
     fs::create_dir_all,
     iter::empty,
@@ -84,22 +86,24 @@ impl Layout {
     /// on every host in `params`, passing the same `params` in each case.  Each
     /// host must pass its own `local_address`.  The `Runtime` on each host
     /// listens on its own address and connects to all of the other addresses.
-    pub fn new_multihost(params: &Vec<(SocketAddr, usize)>, local_address: SocketAddr) -> Layout {
-        // Find `local_address` in `params` and make sure that it's unique.
+    pub fn new_multihost(
+        params: &Vec<(SocketAddr, usize)>,
+        local_address: SocketAddr,
+    ) -> Result<Layout, LayoutError> {
+        // Check that the addresses are unique.
+        let mut uniq = HashSet::new();
+        if let Some((duplicate, _)) = params.iter().find(|(address, _)| !uniq.insert(address)) {
+            return Err(LayoutError::DuplicateAddress(*duplicate));
+        }
+
+        // Find `local_address` in `params`.
         let local_host_idx = params
             .iter()
             .position(|(address, _)| *address == local_address)
-            .unwrap();
-        debug_assert_eq!(
-            params
-                .iter()
-                .rposition(|(address, _)| *address == local_address)
-                .unwrap(),
-            local_host_idx
-        );
+            .ok_or(LayoutError::NoSuchAddress(local_address))?;
 
         if params.len() == 1 {
-            Self::new_solo(params[0].1)
+            Ok(Self::new_solo(params[0].1))
         } else {
             let mut hosts = Vec::with_capacity(params.len());
             let mut total_workers = 0;
@@ -112,10 +116,10 @@ impl Layout {
                 });
                 total_workers += *n_workers;
             }
-            Layout::Multihost {
+            Ok(Layout::Multihost {
                 hosts,
                 local_host_idx,
-            }
+            })
         }
     }
 
@@ -169,6 +173,29 @@ impl Layout {
         }
     }
 }
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum LayoutError {
+    /// The socket address passed to `new_multihost()` isn't in the list of
+    /// hosts.
+    NoSuchAddress(SocketAddr),
+    /// The list of socket addresses passed to `new_multihost()` contains a
+    /// duplicate.
+    DuplicateAddress(SocketAddr),
+}
+
+impl Display for LayoutError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
+        match self {
+            Self::NoSuchAddress(address) => write!(f, "address {address} not in list of hosts"),
+            Self::DuplicateAddress(address) => {
+                write!(f, "duplicate address {address} in list of hosts")
+            }
+        }
+    }
+}
+
+impl StdError for LayoutError {}
 
 /// Convenience trait that allows specifying a [`Layout`] as a `usize` for a
 /// single-machine layout with the specified number of worker threads,

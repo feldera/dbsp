@@ -40,7 +40,7 @@ async fn main() -> AnyResult<()> {
         transport.config_mut().max_frame_length(usize::MAX);
 
         let client = CircuitClient::new(client::Config::default(), transport.await?).spawn();
-        let layout = Layout::new_multihost(&hosts, *exchange_addr);
+        let layout = Layout::new_multihost(&hosts, *exchange_addr)?;
         println!("{layout:?}");
         let client2 = client.clone();
         join_handles.push(spawn(async move {
