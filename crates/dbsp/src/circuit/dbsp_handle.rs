@@ -38,6 +38,8 @@ pub struct Host {
     /// has `workers.len()` workers.
     pub workers: Range<usize>,
 
+    /// Prevents `Host` and `Layout::Multihost` from being instantiated without
+    /// using the constructor (which checks the invariants).
     _private: (),
 }
 
