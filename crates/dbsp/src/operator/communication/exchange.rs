@@ -526,7 +526,11 @@ where
     where
         F: FnMut(T),
     {
-        if !self.ready_to_receive(receiver) {
+        let npeers = self.inner.npeers;
+        if self.inner.receiver_counters[receiver]
+            .compare_exchange(npeers, 0, Ordering::AcqRel, Ordering::Acquire)
+            .is_err()
+        {
             return false;
         }
 
@@ -538,7 +542,6 @@ where
                 .take()
                 .unwrap();
             cb(data);
-            self.inner.receiver_counters[receiver].fetch_sub(1, Ordering::Release);
             if self.inner.local_workers.contains(&sender) {
                 let old_counter = self.inner.sender_counters[sender].fetch_add(1, Ordering::AcqRel);
                 if old_counter >= self.inner.npeers - 1 {
