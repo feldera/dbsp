@@ -96,7 +96,7 @@ impl RuntimeInner {
 pub struct Runtime(Arc<RuntimeInner>);
 
 impl Runtime {
-    /// Create a new runtime with the specified `layout` and runs user-provided
+    /// Create a new runtime with the specified `layout` and run user-provided
     /// closure `f` in each thread.  The closure should build a circuit and
     /// return handles for this function to pass along to its own caller.  The
     /// closure takes a reference to the `Runtime` as an argument, so that
