@@ -550,8 +550,9 @@ where
         }
     }
 
-    /// Returns the range of worker indexes that this input handle covers.  For
-    /// a single-host circuit, this is all of the workers on this host.
+    /// Returns the range of worker indexes that this input handle covers, that
+    /// is, all of the workers on this host (all workers everywhere, for a
+    /// single-host circuit).
     fn workers(&self) -> Range<usize> {
         self.0.workers()
     }
