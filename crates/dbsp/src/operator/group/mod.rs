@@ -1,8 +1,6 @@
 //! Group transformer operators that map multiple input records
 //! into multiple output records.
 
-use bincode::{Decode, Encode};
-
 use crate::{
     algebra::ZRingValue,
     circuit::{
@@ -264,7 +262,7 @@ where
 
 impl<B> Stream<RootCircuit, B>
 where
-    B: IndexedZSet + Send + Encode + Decode,
+    B: IndexedZSet + Send,
 {
     /// Apply group `transformer` to each partition in the input stream.
     ///

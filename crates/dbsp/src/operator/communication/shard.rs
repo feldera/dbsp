@@ -4,8 +4,6 @@
 // TODOs:
 // - different sharding modes.
 
-use bincode::{Decode, Encode};
-
 use crate::{
     circuit::GlobalNodeId,
     circuit_cache_key, default_hash,
@@ -90,7 +88,7 @@ where
     #[track_caller]
     pub fn shard(&self) -> Stream<C, IB>
     where
-        IB: Batch + Send + Encode + Decode,
+        IB: Batch + Send,
     {
         // `shard_generic` returns `None` if there is only one worker thread
         // and hence sharding is a no-op.  In this case, we simply return the
@@ -107,7 +105,7 @@ where
     #[track_caller]
     pub fn shard_generic<OB>(&self) -> Option<Stream<C, OB>>
     where
-        OB: Batch<Key = IB::Key, Val = IB::Val, Time = (), R = IB::R> + Send + Encode + Decode,
+        OB: Batch<Key = IB::Key, Val = IB::Val, Time = (), R = IB::R> + Send,
     {
         let location = Location::caller();
 

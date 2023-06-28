@@ -12,7 +12,11 @@ use std::mem::MaybeUninit;
 // TODO: Fuzz for panic and drop safety
 
 #[derive(Debug)]
-pub struct ColumnLayerConsumer<K, R> {
+pub struct ColumnLayerConsumer<K, R>
+where
+    K: 'static,
+    R: 'static,
+{
     // Invariant: `storage.len <= self.position`, if `storage.len == self.position` the cursor is
     // exhausted
     position: usize,
@@ -93,7 +97,11 @@ impl<K, R> Drop for ColumnLayerConsumer<K, R> {
 }
 
 #[derive(Debug)]
-pub struct ColumnLayerValues<'a, K, R> {
+pub struct ColumnLayerValues<'a, K, R>
+where
+    K: 'static,
+    R: 'static,
+{
     done: bool,
     consumer: &'a mut ColumnLayerConsumer<K, R>,
 }

@@ -13,6 +13,7 @@ use crate::{
     },
     DBData, DBTimestamp, DBWeight, NumEntries,
 };
+use bincode::{Decode, Encode};
 use rand::Rng;
 use size_of::SizeOf;
 use std::{
@@ -25,12 +26,13 @@ pub type OrdValBatchLayer<K, V, T, R, O> =
 
 /// An immutable collection of update tuples, from a contiguous interval of
 /// logical times.
-#[derive(Debug, Clone, SizeOf)]
+#[derive(Debug, Clone, SizeOf, Encode, Decode)]
 pub struct OrdValBatch<K, V, T, R, O = usize>
 where
-    K: Ord,
-    V: Ord,
-    T: Lattice,
+    K: Ord + 'static,
+    V: Ord + 'static,
+    T: Lattice + 'static,
+    R: 'static,
     O: OrdOffset,
 {
     /// Where all the dataz is.
@@ -365,9 +367,9 @@ where
 #[derive(Debug, SizeOf)]
 pub struct OrdValCursor<'s, K, V, T, R, O = usize>
 where
-    K: Ord + Clone,
-    V: Ord + Clone,
-    T: Lattice + Ord + Clone,
+    K: Ord + Clone + 'static,
+    V: Ord + Clone + 'static,
+    T: Lattice + Ord + Clone + 'static,
     R: MonoidValue,
     O: OrdOffset,
 {

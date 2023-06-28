@@ -15,12 +15,7 @@ use crate::{
     },
     DBData, DBWeight, NumEntries,
 };
-use bincode::{
-    de::Decoder,
-    enc::Encoder,
-    error::{DecodeError, EncodeError},
-    Decode, Encode,
-};
+use bincode::{Decode, Encode};
 use rand::Rng;
 use size_of::SizeOf;
 use std::{
@@ -31,48 +26,14 @@ use std::{
 };
 
 /// An immutable collection of `(key, weight)` pairs without timing information.
-#[derive(Debug, Clone, Eq, PartialEq, SizeOf)]
-pub struct OrdZSet<K, R> {
+#[derive(Debug, Clone, Eq, PartialEq, Encode, Decode, SizeOf)]
+pub struct OrdZSet<K, R>
+where
+    K: 'static,
+    R: 'static,
+{
     #[doc(hidden)]
     pub layer: ColumnLayer<K, R>,
-}
-
-impl<K, R> Encode for OrdZSet<K, R>
-where
-    K: DBData,
-    R: DBWeight,
-{
-    fn encode<E: Encoder>(&self, encoder: &mut E) -> Result<(), EncodeError> {
-        let len: usize = self.len();
-        Encode::encode(&len, encoder)?;
-        let mut n = 0;
-        let mut cursor = self.cursor();
-        while cursor.key_valid() {
-            Encode::encode(cursor.key(), encoder)?;
-            Encode::encode(&cursor.weight(), encoder)?;
-            n += 1;
-            cursor.step_key();
-        }
-        debug_assert_eq!(n, len);
-        Ok(())
-    }
-}
-
-impl<K, R> Decode for OrdZSet<K, R>
-where
-    K: DBData,
-    R: DBWeight,
-{
-    fn decode<D: Decoder>(decoder: &mut D) -> Result<Self, DecodeError> {
-        let len: usize = Decode::decode(decoder)?;
-        let mut builder = <Self as Batch>::Builder::with_capacity((), len);
-        for _ in 0..len {
-            let key = Decode::decode(decoder)?;
-            let weight = Decode::decode(decoder)?;
-            builder.push((key, weight));
-        }
-        Ok(builder.done())
-    }
 }
 
 impl<K, R> OrdZSet<K, R> {
@@ -559,7 +520,11 @@ where
 }
 
 #[derive(Debug, SizeOf)]
-pub struct OrdZSetConsumer<K, R> {
+pub struct OrdZSetConsumer<K, R>
+where
+    K: 'static,
+    R: 'static,
+{
     consumer: ColumnLayerConsumer<K, R>,
 }
 
@@ -590,7 +555,11 @@ impl<K, R> Consumer<K, (), R, ()> for OrdZSetConsumer<K, R> {
 }
 
 #[derive(Debug)]
-pub struct OrdZSetValueConsumer<'a, K, R> {
+pub struct OrdZSetValueConsumer<'a, K, R>
+where
+    K: 'static,
+    R: 'static,
+{
     values: ColumnLayerValues<'a, K, R>,
 }
 

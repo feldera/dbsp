@@ -7,6 +7,8 @@ use super::{
     ValueConsumer,
 };
 use crate::{algebra::HasZero, utils::VecExt, DBData, DBTimestamp, DBWeight, NumEntries};
+use bincode::Decode;
+use bincode::Encode;
 use rand::seq::IteratorRandom;
 use rand::thread_rng;
 use rand::Rng;
@@ -241,14 +243,24 @@ where
 }
 
 /// Inefficient but simple batch implementation as a B-tree map.
-#[derive(Clone, Debug, PartialEq, Eq, SizeOf)]
-pub struct TestBatch<K, V, T, R> {
+#[derive(Clone, Debug, PartialEq, Eq, Encode, Decode, SizeOf)]
+pub struct TestBatch<K, V, T, R>
+where
+    K: Ord,
+    V: Ord,
+    T: Ord,
+{
     data: BTreeMap<(K, V, T), R>,
     lower_key_bound: Option<K>,
     lower_val_bound: Option<V>,
 }
 
-impl<K, V, T, R> NumEntries for TestBatch<K, V, T, R> {
+impl<K, V, T, R> NumEntries for TestBatch<K, V, T, R>
+where
+    K: Ord,
+    V: Ord,
+    T: Ord,
+{
     const CONST_NUM_ENTRIES: Option<usize> = None;
 
     fn num_entries_shallow(&self) -> usize {
@@ -338,8 +350,13 @@ where
     }
 }
 
-#[derive(SizeOf)]
-pub struct TestBatchBatcher<K, V, T, R> {
+#[derive(SizeOf, Encode, Decode)]
+pub struct TestBatchBatcher<K, V, T, R>
+where
+    K: Ord,
+    V: Ord,
+    T: Ord,
+{
     time: T,
     result: TestBatch<K, V, T, R>,
 }
@@ -383,7 +400,12 @@ where
 }
 
 #[derive(SizeOf)]
-pub struct TestBatchBuilder<K, V, T, R> {
+pub struct TestBatchBuilder<K, V, T, R>
+where
+    K: Ord,
+    V: Ord,
+    T: Ord,
+{
     time: T,
     result: TestBatch<K, V, T, R>,
 }
@@ -425,7 +447,12 @@ where
 }
 
 #[derive(SizeOf)]
-pub struct TestBatchMerger<K, V, T, R> {
+pub struct TestBatchMerger<K, V, T, R>
+where
+    K: Ord,
+    V: Ord,
+    T: Ord,
+{
     result: TestBatch<K, V, T, R>,
 }
 

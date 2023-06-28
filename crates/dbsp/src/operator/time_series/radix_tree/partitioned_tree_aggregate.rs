@@ -16,7 +16,6 @@ use crate::{
     trace::{cursor::CursorEmpty, Builder, Cursor, Spine},
     Circuit, DBData, DBWeight, OrdIndexedZSet, RootCircuit, Stream,
 };
-use bincode::{Decode, Encode};
 use num::PrimInt;
 use size_of::SizeOf;
 use std::{
@@ -109,7 +108,7 @@ impl<PK, TS, A, R, C> PartitionedRadixTreeCursor<PK, TS, A, R> for C where
 
 impl<Z> Stream<RootCircuit, Z>
 where
-    Z: Clone + Encode + Decode + 'static,
+    Z: Clone + 'static,
 {
     /// Given a batch of updates to a partitioned time series stream, computes a
     /// stream of updates to its partitioned radix tree.

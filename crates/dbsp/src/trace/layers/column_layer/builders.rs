@@ -32,8 +32,8 @@ impl<K, R> ColumnLayerBuilder<K, R> {
 
 impl<K, R> Builder for ColumnLayerBuilder<K, R>
 where
-    K: Ord + Clone,
-    R: Eq + HasZero + AddAssign + AddAssignByRef + Clone,
+    K: Ord + Clone + 'static,
+    R: Eq + HasZero + AddAssign + AddAssignByRef + Clone + 'static,
 {
     type Trie = ColumnLayer<K, R>;
 
@@ -56,8 +56,8 @@ where
 
 impl<K, R> MergeBuilder for ColumnLayerBuilder<K, R>
 where
-    K: Ord + Clone,
-    R: Eq + HasZero + AddAssign + AddAssignByRef + Clone,
+    K: Ord + Clone + 'static,
+    R: Eq + HasZero + AddAssign + AddAssignByRef + Clone + 'static,
 {
     fn with_capacity(left: &Self::Trie, right: &Self::Trie) -> Self {
         let capacity = Trie::keys(left) + Trie::keys(right);
@@ -171,8 +171,8 @@ where
 
 impl<K, R> TupleBuilder for ColumnLayerBuilder<K, R>
 where
-    K: Ord + Clone,
-    R: Eq + HasZero + AddAssign + AddAssignByRef + Clone,
+    K: Ord + Clone + 'static,
+    R: Eq + HasZero + AddAssign + AddAssignByRef + Clone + 'static,
 {
     type Item = (K, R);
 

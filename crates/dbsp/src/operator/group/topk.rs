@@ -1,5 +1,3 @@
-use bincode::{Decode, Encode};
-
 use super::{DiffGroupTransformer, Monotonicity, NonIncrementalGroupTransformer};
 use crate::{
     algebra::ZRingValue, trace::Cursor, DBData, DBWeight, IndexedZSet, OrdIndexedZSet, RootCircuit,
@@ -9,7 +7,7 @@ use std::marker::PhantomData;
 
 impl<B> Stream<RootCircuit, B>
 where
-    B: IndexedZSet + Send + Encode + Decode,
+    B: IndexedZSet + Send,
 {
     /// Pick `k` smallest values in each group.
     ///

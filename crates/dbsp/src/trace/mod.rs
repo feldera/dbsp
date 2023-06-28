@@ -73,7 +73,7 @@ impl<T> DBData for T where
 /// When writing code generic over any weight type, it is sufficient to impose
 /// `DBWeight` as a trait bound on types.  Conversely, a trait bound of the form
 /// `B: BatchReader` implies `B::R: DBWeight`.
-pub trait DBWeight: DBData + MonoidValue {}
+pub trait DBWeight: DBData + MonoidValue + Encode + Decode {}
 impl<T> DBWeight for T where T: DBData + MonoidValue {}
 
 /// Trait for data types used as logical timestamps.
@@ -177,7 +177,7 @@ pub trait Trace: BatchReader {
 /// useful for views derived from other sources in ways that prevent the
 /// construction of batches from the type of data in the view (for example,
 /// filtered views, or views with extended time coordinates).
-pub trait BatchReader: NumEntries + SizeOf + 'static
+pub trait BatchReader: NumEntries + SizeOf + Encode + Decode + 'static
 where
     Self: Sized,
 {
@@ -271,7 +271,7 @@ where
 }
 
 /// An immutable collection of updates.
-pub trait Batch: BatchReader + Clone
+pub trait Batch: BatchReader + Encode + Decode + Clone
 where
     Self: Sized,
 {

@@ -13,6 +13,9 @@ use std::{mem::MaybeUninit, ptr};
 #[derive(Debug)]
 pub struct OrderedLayerConsumer<K, V, R, O>
 where
+    K: 'static,
+    V: 'static,
+    R: 'static,
     O: OrdOffset,
 {
     /// The position within `storage.keys` and `storage.offs` we're currently
@@ -154,7 +157,11 @@ where
 
 /// A [`ValueConsumer`] impl for the values yielded by [`OrderedLayerConsumer`]
 #[derive(Debug)]
-pub struct OrderedLayerValues<'a, V, R> {
+pub struct OrderedLayerValues<'a, V, R>
+where
+    V: 'static,
+    R: 'static,
+{
     // Invariant: `current <= end` (if `current == end` then the current consumer is exhausted)
     // Invariant: `current` will always be a valid index into `consumer`
     current: usize,

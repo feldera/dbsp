@@ -16,6 +16,7 @@ use crate::{
     },
     DBData, DBTimestamp, DBWeight, NumEntries,
 };
+use bincode::{Decode, Encode};
 use rand::Rng;
 use size_of::SizeOf;
 use std::{
@@ -27,8 +28,14 @@ pub type OrdKeyBatchLayer<K, T, R, O> = OrderedLayer<K, ColumnLayer<T, R>, O>;
 
 /// An immutable collection of update tuples, from a contiguous interval of
 /// logical times.
-#[derive(Debug, Clone, SizeOf)]
-pub struct OrdKeyBatch<K, T, R, O = usize> {
+#[derive(Debug, Clone, Encode, Decode, SizeOf)]
+pub struct OrdKeyBatch<K, T, R, O = usize>
+where
+    K: 'static,
+    T: 'static,
+    R: 'static,
+    O: 'static,
+{
     /// Where all the dataz is.
     pub layer: OrdKeyBatchLayer<K, T, R, O>,
     pub lower: Antichain<T>,
@@ -301,8 +308,8 @@ where
 pub struct OrdKeyCursor<'s, K, T, R, O = usize>
 where
     O: OrdOffset,
-    K: Ord + Clone,
-    T: Lattice + Ord + Clone,
+    K: Ord + Clone + 'static,
+    T: Lattice + Ord + Clone + 'static,
     R: MonoidValue,
 {
     valid: bool,
@@ -528,6 +535,9 @@ where
 
 pub struct OrdKeyConsumer<K, T, R, O>
 where
+    K: 'static,
+    T: 'static,
+    R: 'static,
     O: OrdOffset,
 {
     consumer: OrderedLayerConsumer<K, T, R, O>,
@@ -562,7 +572,11 @@ where
     }
 }
 
-pub struct OrdKeyValueConsumer<'a, K, T, R, O> {
+pub struct OrdKeyValueConsumer<'a, K, T, R, O>
+where
+    T: 'static,
+    R: 'static,
+{
     consumer: OrderedLayerValues<'a, T, R>,
     __type: PhantomData<(K, O)>,
 }

@@ -18,6 +18,7 @@ pub mod unordered;
 mod test;
 
 pub use advance::{advance, advance_erased, advance_raw, retreat};
+use bincode::{Decode, Encode};
 
 use crate::algebra::HasZero;
 use size_of::SizeOf;
@@ -245,6 +246,8 @@ pub trait OrdOffset:
     + HasZero
     + SizeOf
     + Sized
+    + Encode
+    + Decode
     + 'static
 {
     fn from_usize(offset: usize) -> Self;
@@ -263,6 +266,8 @@ where
         + HasZero
         + SizeOf
         + Sized
+        + Encode
+        + Decode
         + 'static,
     <O as TryInto<usize>>::Error: Debug,
     <O as TryFrom<usize>>::Error: Debug,

@@ -9,8 +9,8 @@ use std::fmt::{self, Display};
 #[derive(Debug, Clone)]
 pub struct ColumnLayerCursor<'s, K, R>
 where
-    K: Ord + Clone,
-    R: Clone,
+    K: Ord + Clone + 'static,
+    R: Clone + 'static,
 {
     // We represent current position of the cursor as isize, so we can use `-1`
     // to represent invalid cursor that rolled over the left bound of the range.

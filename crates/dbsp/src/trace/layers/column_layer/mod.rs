@@ -6,6 +6,7 @@ mod consumer;
 mod cursor;
 mod tests;
 
+use bincode::{Decode, Encode};
 pub use builders::ColumnLayerBuilder;
 pub use consumer::{ColumnLayerConsumer, ColumnLayerValues};
 pub use cursor::ColumnLayerCursor;
@@ -28,8 +29,12 @@ use std::{
 };
 
 /// A layer of unordered values
-#[derive(Debug, Clone, Eq, PartialEq, SizeOf)]
-pub struct ColumnLayer<K, R> {
+#[derive(Debug, Clone, Eq, PartialEq, Encode, Decode, SizeOf)]
+pub struct ColumnLayer<K, R>
+where
+    K: 'static,
+    R: 'static,
+{
     // Invariant: keys.len == diffs.len
     pub(super) keys: Vec<K>,
     pub(super) diffs: Vec<R>,

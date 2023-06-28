@@ -3,6 +3,7 @@
 mod consumer;
 mod tests;
 
+use bincode::{Decode, Encode};
 pub use consumer::{OrderedLayerConsumer, OrderedLayerValues};
 
 use crate::{
@@ -29,8 +30,12 @@ use textwrap::indent;
 /// In this representation, the values for `keys[i]` are found at `vals[offs[i]
 /// .. offs[i+1]]`.
 // False positive from clippy
-#[derive(Debug, SizeOf, PartialEq, Eq, Clone)]
-pub struct OrderedLayer<K, L, O = usize> {
+#[derive(Debug, SizeOf, PartialEq, Eq, Clone, Encode, Decode)]
+pub struct OrderedLayer<K, L, O = usize>
+where
+    K: 'static,
+    O: 'static,
+{
     /// The keys of the layer.
     pub(crate) keys: Vec<K>,
     /// The offsets associated with each key.
@@ -415,7 +420,7 @@ impl<K, L, O> OrderedBuilder<K, L, O> {
     /// eliding unnecessary clones
     pub fn with_key<F>(&mut self, key: K, with: F)
     where
-        K: Eq,
+        K: Eq + 'static,
         L: TupleBuilder,
         O: OrdOffset,
         F: for<'a> FnOnce(OrderedBuilderVals<'a, K, L, O>),
@@ -442,13 +447,18 @@ impl<K, L, O> OrderedBuilder<K, L, O> {
     }
 }
 
-pub struct OrderedBuilderVals<'a, K, L, O> {
+pub struct OrderedBuilderVals<'a, K, L, O>
+where
+    K: 'static,
+    O: 'static,
+{
     builder: &'a mut OrderedBuilder<K, L, O>,
     pushes: &'a mut usize,
 }
 
 impl<'a, K, L, O> OrderedBuilderVals<'a, K, L, O>
 where
+    K: 'static,
     L: TupleBuilder,
 {
     pub fn push(&mut self, value: <L as TupleBuilder>::Item) {
@@ -467,7 +477,7 @@ where
 
 impl<K, L, O> Builder for OrderedBuilder<K, L, O>
 where
-    K: Ord + Clone,
+    K: Ord + Clone + 'static,
     L: Builder,
     O: OrdOffset,
 {
@@ -761,7 +771,7 @@ where
 
 impl<K, L, O> MergeBuilder for OrderedBuilder<K, L, O>
 where
-    K: Ord + Clone,
+    K: Ord + Clone + 'static,
     L: MergeBuilder,
     O: OrdOffset,
 {
@@ -849,7 +859,7 @@ where
 
 impl<K, L, O> TupleBuilder for OrderedBuilder<K, L, O>
 where
-    K: Ord + Clone,
+    K: Ord + Clone + 'static,
     L: TupleBuilder,
     O: OrdOffset,
 {
@@ -905,6 +915,8 @@ where
 #[derive(Debug)]
 pub struct OrderedCursor<'s, K, O, L>
 where
+    K: 'static,
+    O: 'static,
     L: Trie,
 {
     storage: &'s OrderedLayer<K, L, O>,

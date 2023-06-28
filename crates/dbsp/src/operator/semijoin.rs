@@ -1,5 +1,3 @@
-use bincode::{Decode, Encode};
-
 use crate::{
     algebra::{MulByRef, ZSet},
     circuit::{
@@ -22,7 +20,6 @@ circuit_cache_key!(SemijoinId<C, D>((GlobalNodeId, GlobalNodeId) => Stream<C, D>
 impl<C, Pairs> Stream<C, Pairs>
 where
     C: Circuit,
-    Pairs: Encode + Decode,
 {
     /// Semijoin two streams of batches.
     ///
@@ -43,7 +40,7 @@ where
         // TODO: Associated type bounds (rust/#52662) really simplify things
         // TODO: Allow non-unit timestamps
         Pairs: Batch<Time = ()> + Send,
-        Keys: Batch<Key = Pairs::Key, Val = (), Time = ()> + Send + Encode + Decode,
+        Keys: Batch<Key = Pairs::Key, Val = (), Time = ()> + Send,
         // TODO: Should this be `IndexedZSet<Key = Pairs::Key, Val = Pairs::Val>`?
         Out: ZSet<Key = (Pairs::Key, Pairs::Val)>,
         Pairs::R: MulByRef<Keys::R, Output = Out::R>,

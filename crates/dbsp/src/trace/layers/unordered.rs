@@ -5,7 +5,11 @@ use size_of::SizeOf;
 
 /// A layer of unordered values
 #[derive(Debug, Clone, Eq, PartialEq, SizeOf)]
-pub struct UnorderedLeaf<K, R> {
+pub struct UnorderedLeaf<K, R>
+where
+    K: 'static,
+    R: 'static,
+{
     layer: ColumnLayer<K, R>,
 }
 
@@ -92,7 +96,11 @@ impl<K, R> Default for UnorderedLeaf<K, R> {
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, SizeOf)]
-pub struct UnorderedCursor<'a, K, R> {
+pub struct UnorderedCursor<'a, K, R>
+where
+    K: 'static,
+    R: 'static,
+{
     leaf: &'a UnorderedLeaf<K, R>,
     current: usize,
     start: usize,
@@ -162,7 +170,11 @@ impl<'s, K, R> Cursor<'s> for UnorderedCursor<'s, K, R> {
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, SizeOf)]
-pub struct UnorderedMergeBuilder<K, R> {
+pub struct UnorderedMergeBuilder<K, R>
+where
+    K: 'static,
+    R: 'static,
+{
     leaf: UnorderedLeaf<K, R>,
 }
 
@@ -258,7 +270,11 @@ where
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, SizeOf)]
-pub struct UnorderedLeafBuilder<K, R> {
+pub struct UnorderedLeafBuilder<K, R>
+where
+    K: 'static,
+    R: 'static,
+{
     leaf: UnorderedLeaf<K, R>,
 }
 

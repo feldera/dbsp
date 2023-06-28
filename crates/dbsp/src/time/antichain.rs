@@ -1,4 +1,5 @@
 use crate::algebra::{PartialOrder, TotalOrder};
+use bincode::{Decode, Encode};
 use size_of::SizeOf;
 use std::{
     fmt::{self, Debug},
@@ -20,8 +21,11 @@ use std::{
 /// Two antichains are equal if the contain the same set of elements, even if in
 /// different orders. This can make equality testing quadratic, though linear in
 /// the common case that the sequences are identical.
-#[derive(Default, SizeOf)]
-pub struct Antichain<T> {
+#[derive(Default, SizeOf, Encode, Decode)]
+pub struct Antichain<T>
+where
+    T: 'static,
+{
     // TODO: We can specialize containers based on the inner type, meaning we could give ourselves
     //       a more favorable memory footprint for things like `Antichain<()>`
     elements: Vec<T>,
