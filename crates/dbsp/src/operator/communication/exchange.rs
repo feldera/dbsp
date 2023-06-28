@@ -154,9 +154,9 @@ struct InnerExchange {
     sent: AtomicUsize,
     /// The RPC clients to contact remote hosts.
     clients: Arc<Clients>,
-    /// For each sender/receiver worker pair involved in RPC, this allows the
-    /// `exchange` RPC to wait until the receiver has taken its data out of the
-    /// mailbox.
+    /// This allows the `exchange` RPC to wait until the receiver has taken its
+    /// data out of the mailbox.  There are `n_remote_workers * n_local_workers`
+    /// elements.
     sender_notifies: Vec<Notify>,
     /// A callback that takes the raw data exchanged over RPC and deserializes
     /// and delivers it to the receiver's mailbox.
@@ -171,14 +171,19 @@ impl InnerExchange {
     ) -> InnerExchange {
         let runtime = Runtime::runtime().unwrap();
         let npeers = runtime.num_workers();
+        let local_workers = runtime.layout().local_workers();
+        let n_local_workers = local_workers.len();
+        let n_remote_workers = npeers - n_local_workers;
         Self {
             exchange_id,
             npeers,
-            local_workers: runtime.layout().local_workers(),
+            local_workers,
             clients,
             receiver_counters: (0..npeers).map(|_| AtomicUsize::new(0)).collect(),
             receiver_callbacks: (0..npeers).map(|_| OnceCell::new()).collect(),
-            sender_notifies: (0..npeers * npeers).map(|_| Notify::new()).collect(),
+            sender_notifies: (0..n_local_workers * n_remote_workers)
+                .map(|_| Notify::new())
+                .collect(),
             sender_counters: (0..npeers)
                 .map(|_| CachePadded::new(AtomicUsize::new(npeers)))
                 .collect(),
@@ -186,6 +191,21 @@ impl InnerExchange {
             deliver: Box::new(deliver),
             sent: AtomicUsize::new(0),
         }
+    }
+
+    /// Returns the `sender_notify` for a sender/receiver pair.  `receiver`
+    /// must be a local worker ID, and `sender` must be a remote worker ID.
+    fn sender_notify(&self, sender: usize, receiver: usize) -> &Notify {
+        debug_assert!(sender < self.npeers && !self.local_workers.contains(&sender));
+        debug_assert!(self.local_workers.contains(&receiver));
+        let n_local_workers = self.local_workers.len();
+        let sender_ofs = if sender >= self.local_workers.start {
+            sender - n_local_workers
+        } else {
+            sender
+        };
+        let receiver_ofs = receiver - self.local_workers.start;
+        &self.sender_notifies[sender_ofs * n_local_workers + receiver_ofs]
     }
 
     /// Receives messages sent from all of the worker threads in `senders` to
@@ -217,9 +237,7 @@ impl InnerExchange {
         // Wait for the receivers to pick up their mail before returning.
         for sender in senders {
             for receiver in receivers.clone() {
-                self.sender_notifies[self.mailbox_index(sender, receiver)]
-                    .notified()
-                    .await;
+                self.sender_notify(sender, receiver).notified().await;
             }
         }
     }
@@ -284,9 +302,32 @@ impl InnerExchange {
 /// worker have been populated, it can read and clear them.
 pub(crate) struct Exchange<T> {
     inner: Arc<InnerExchange>,
-    /// `npeers^2` mailboxes, clients, and servers, one for each sender/receiver
-    /// pair.  Each mailbox is accessed by exactly two threads, so contention is
-    /// low.
+    /// `npeers^2` mailboxes, one for each sender/receiver pair.  Each mailbox
+    /// is accessed by exactly two threads, so contention is low.
+    ///
+    /// We only use the mailboxes where either the sender or the receiver is one
+    /// of our local workers. In the diagram below, L is mailboxes used for
+    /// local exchange, S mailboxes used for sending RPC exchange, and R
+    /// mailboxes used for receiving exchange via RPC:
+    ///
+    /// ```text
+    ///           <-------receivers------->
+    ///                  local
+    ///                 workers
+    /// ^         -------------------------
+    /// |         |     |RRRRR|     |     |
+    ///           |     |RRRRR|     |     |
+    /// s         |-----|-----|-----|-----|
+    /// e  local  |SSSSS|LLLLL|SSSSS|SSSSS|
+    /// n workers |SSSSS|LLLLL|SSSSS|SSSSS|
+    /// d         |-----|-----|-----|-----|
+    /// e         |     |RRRRR|     |     |
+    /// r         |     |RRRRR|     |     |
+    /// s         |-----|-----|-----|-----|
+    ///           |     |RRRRR|     |     |
+    /// |         |     |RRRRR|     |     |
+    /// v         |-----|-----|-----|-----|
+    /// ```
     mailboxes: Arc<Vec<Mutex<Option<T>>>>,
 }
 
@@ -552,7 +593,7 @@ where
                     }
                 }
             } else {
-                self.inner.sender_notifies[self.inner.mailbox_index(sender, receiver)].notify_one();
+                self.inner.sender_notify(sender, receiver).notify_one();
             }
         }
         true
