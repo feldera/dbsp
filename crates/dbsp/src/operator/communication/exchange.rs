@@ -58,10 +58,11 @@ circuit_cache_key!(local ExchangeCacheId<T>(ExchangeId => Arc<Exchange<T>>));
 #[tarpc::service]
 trait ExchangeService {
     /// Sends messages in `exchange_id` from all of the worker threads in
-    /// `senders` to all of the worker threads `receivers` in the server that
+    /// `senders` to all of the worker thread receivers in the server that
     /// processes the message.  The Bincode-encoded message from `sender` to
     /// `receiver` is `data[sender - senders.start][receiver -
-    /// receivers.start]`.
+    /// receivers.start]`, where `receivers` is the `Range<usize>` of worker
+    /// thread IDs in the server that processes the message.
     async fn exchange(exchange_id: usize, senders: Range<usize>, data: Vec<Vec<Vec<u8>>>);
 }
 
@@ -102,8 +103,9 @@ impl Clients {
         )
     }
 
-    /// Returns the client for `worker`, which must be a remote worker ID.
-    async fn get(&self, worker: usize) -> &ExchangeServiceClient {
+    /// Returns a client for `worker`, which must be a remote worker ID, first
+    /// establishing a connection if there isn't one yet.
+    async fn connect(&self, worker: usize) -> &ExchangeServiceClient {
         let (host, cell) = self
             .0
             .iter()
@@ -476,7 +478,7 @@ where
                     })
                     .collect();
 
-                let client = this.inner.clients.get(receivers.start).await;
+                let client = this.inner.clients.connect(receivers.start).await;
 
                 // Send it.
                 futures.push(client.exchange(
