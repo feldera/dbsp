@@ -31,19 +31,25 @@
 //! pending.
 
 use super::{EndpointId, GlobalPipelineConfig, InputEndpointConfig, OutputEndpointConfig};
+use crate::PipelineState;
 use anyhow::Error as AnyError;
 use crossbeam::sync::{ShardedLock, ShardedLockReadGuard, Unparker};
+use num_traits::FromPrimitive;
 use serde::{Serialize, Serializer};
 use std::{
     collections::BTreeMap,
     sync::{
-        atomic::{AtomicBool, AtomicU64, Ordering},
+        atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering},
         Mutex,
     },
 };
 
 #[derive(Default, Serialize)]
 pub struct GlobalControllerMetrics {
+    /// State of the pipeline: running, paused, or terminating.
+    #[serde(serialize_with = "serialize_pipeline_state")]
+    state: AtomicU32,
+
     /// Total number of records currently buffered by all endpoints.
     pub buffered_input_records: AtomicU64,
 
@@ -74,7 +80,27 @@ pub struct GlobalControllerMetrics {
     pub step_requested: AtomicBool,
 }
 
+fn serialize_pipeline_state<S>(state: &AtomicU32, serializer: S) -> Result<S::Ok, S::Error>
+where
+    S: Serializer,
+{
+    PipelineState::from_u32(state.load(Ordering::Acquire))
+        .unwrap()
+        .serialize(serializer)
+}
+
 impl GlobalControllerMetrics {
+    fn new() -> Self {
+        Self {
+            state: AtomicU32::from(PipelineState::Paused as u32),
+            buffered_input_records: AtomicU64::new(0),
+            total_input_records: AtomicU64::new(0),
+            total_processed_records: AtomicU64::new(0),
+            pipeline_complete: AtomicBool::new(false),
+            step_requested: AtomicBool::new(false),
+        }
+    }
+
     fn input_batch(&self, num_records: u64) -> u64 {
         self.total_input_records
             .fetch_add(num_records, Ordering::AcqRel);
@@ -164,10 +190,20 @@ impl ControllerStatus {
     pub fn new(global_config: &GlobalPipelineConfig) -> Self {
         Self {
             global_config: global_config.clone(),
-            global_metrics: Default::default(),
+            global_metrics: GlobalControllerMetrics::new(),
             inputs: ShardedLock::new(BTreeMap::new()),
             outputs: ShardedLock::new(BTreeMap::new()),
         }
+    }
+
+    pub fn state(&self) -> PipelineState {
+        PipelineState::from_u32(self.global_metrics.state.load(Ordering::Acquire)).unwrap()
+    }
+
+    pub fn set_state(&self, state: PipelineState) {
+        self.global_metrics
+            .state
+            .store(state as u32, Ordering::Release);
     }
 
     /// Initialize stats for a new input endpoint.

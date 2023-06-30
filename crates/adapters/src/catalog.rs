@@ -65,7 +65,7 @@ pub struct OutputCollectionHandles {
     /// [`Stream::neighborhood`] operator.
     pub neighborhood_handle: Box<dyn SerOutputBatchHandle>,
 
-    /// A stream that contains the full snapshot of the neightborhood.  Only produces
+    /// A stream that contains the full snapshot of the neighborhood.  Only produces
     /// an output whenever the `neighborhood_descr_handle` input is set to `Some(..)`.  
     pub neighborhood_snapshot_handle: Box<dyn SerOutputBatchHandle>,
 
@@ -95,7 +95,7 @@ pub enum OutputQuery {
     /// Query the entire contents of the table (similar to `SELECT * FROM`).
     #[serde(rename = "table")]
     Table,
-    /// Neighborhood query (see [`Stream::neightborhood`]).
+    /// Neighborhood query (see [`Stream::neighborhood`]).
     #[serde(rename = "neighborhood")]
     Neighborhood,
     /// Quantiles query (see `[Stream::stream_key_quantiles]`).
@@ -114,8 +114,8 @@ impl Default for OutputQuery {
 /// Stores the result of a a [query](`OutputQuery`) as a pair of streams:
 /// a stream of changes and a snapshot, i.e., the integral, of all previous
 /// changes.  Not all queries return both streams, e.g., the
-/// [quantiles](`OutputQuery::quantiles`) query only returns a snapshot,
-/// while the [table](`OutputTransport::query`) currently only returns the
+/// [quantiles](`OutputQuery::Quantiles`) query only returns a snapshot,
+/// while the [table](`OutputQuery::Table`) query currently only returns the
 /// delta stream; therefore the stream handles are wrapped in `Option`s.
 ///
 /// Whenever both streams are present, the client may consume the result in

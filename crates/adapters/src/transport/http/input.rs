@@ -1,4 +1,7 @@
-use crate::{ControllerError, InputConsumer, InputEndpoint, PipelineState, TransportConfig};
+use crate::{
+    server::PipelineError, ControllerError, InputConsumer, InputEndpoint, PipelineState,
+    TransportConfig,
+};
 use actix::Message;
 use actix_web::{web::Payload, HttpResponse};
 use anyhow::{anyhow, Error as AnyError, Result as AnyResult};
@@ -133,7 +136,7 @@ impl HttpInputEndpoint {
     pub(crate) async fn complete_request(
         &self,
         mut payload: Payload,
-    ) -> Result<HttpResponse, ControllerError> {
+    ) -> Result<HttpResponse, PipelineError> {
         debug!("HTTP input endpoint '{}': start of request", self.name());
 
         let mut num_bytes = 0;
@@ -144,7 +147,7 @@ impl HttpInputEndpoint {
                     let _ = status_watch.changed().await;
                 }
                 PipelineState::Terminated => {
-                    return Err(ControllerError::pipeline_terminating());
+                    return Err(PipelineError::Terminating);
                 }
                 PipelineState::Running => {
                     // Check pipeline status at least every second.
@@ -153,20 +156,20 @@ impl HttpInputEndpoint {
                         Ok(Some(Ok(bytes))) => {
                             num_bytes += bytes.len();
                             if let Err(e) = self.push_bytes(&bytes) {
-                                return Err(ControllerError::parse_error(self.name(), e));
+                                Err(ControllerError::parse_error(self.name(), e))?
                             }
                         }
                         Ok(Some(Err(e))) => {
                             self.error(true, anyhow!(e.to_string()));
-                            return Err(ControllerError::input_transport_error(
+                            Err(ControllerError::input_transport_error(
                                 self.name(),
                                 true,
                                 anyhow!(e),
-                            ));
+                            ))?
                         }
                         Ok(None) => {
                             if let Err(e) = self.eoi() {
-                                return Err(ControllerError::parse_error(self.name(), e));
+                                Err(ControllerError::parse_error(self.name(), e))?
                             }
                             break;
                         }

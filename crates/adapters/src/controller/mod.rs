@@ -46,11 +46,10 @@ use crossbeam::{
 use dbsp::DBSPHandle;
 use erased_serde::Deserializer as ErasedDeserializer;
 use log::{debug, error, info};
-use num_traits::FromPrimitive;
 use std::{
     collections::{BTreeMap, BTreeSet, HashSet},
     sync::{
-        atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering},
+        atomic::{AtomicBool, AtomicU64, Ordering},
         Arc, Mutex,
     },
     thread::{spawn, JoinHandle},
@@ -750,8 +749,7 @@ impl OutputEndpoints {
 /// A reference to this struct is held by each input probe and by both
 /// controller threads.
 struct ControllerInner {
-    status: ControllerStatus,
-    state: AtomicU32,
+    status: Arc<ControllerStatus>,
     num_api_connections: AtomicU64,
     dump_profile_request: AtomicBool,
     catalog: Arc<Mutex<Catalog>>,
@@ -770,13 +768,11 @@ impl ControllerInner {
         backpressure_thread_unparker: Unparker,
         error_cb: Box<dyn Fn(ControllerError) + Send + Sync>,
     ) -> Self {
-        let status = ControllerStatus::new(global_config);
-        let state = AtomicU32::new(PipelineState::Paused as u32);
+        let status = Arc::new(ControllerStatus::new(global_config));
         let dump_profile_request = AtomicBool::new(false);
 
         Self {
             status,
-            state,
             num_api_connections: AtomicU64::new(0),
             dump_profile_request,
             catalog: Arc::new(Mutex::new(catalog)),
@@ -1093,18 +1089,16 @@ impl ControllerInner {
     }
 
     fn state(self: &Arc<Self>) -> PipelineState {
-        PipelineState::from_u32(self.state.load(Ordering::Acquire)).unwrap()
+        self.status.state()
     }
 
     fn start(self: &Arc<Self>) {
-        self.state
-            .store(PipelineState::Running as u32, Ordering::Release);
+        self.status.set_state(PipelineState::Running);
         self.unpark_backpressure();
     }
 
     fn pause(self: &Arc<Self>) {
-        self.state
-            .store(PipelineState::Paused as u32, Ordering::Release);
+        self.status.set_state(PipelineState::Paused);
         self.unpark_backpressure();
     }
 
@@ -1116,8 +1110,7 @@ impl ControllerInner {
         }
         inputs.clear();
 
-        self.state
-            .store(PipelineState::Terminated as u32, Ordering::Release);
+        self.status.set_state(PipelineState::Terminated);
 
         self.unpark_circuit();
         self.unpark_backpressure();

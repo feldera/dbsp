@@ -213,9 +213,6 @@ pub enum ControllerError {
         error: AnyError,
     },
 
-    /// Operation failed to complete because the pipeline is shutting down.
-    PipelineTerminating,
-
     /// Error evaluating the DBSP circuit.
     DbspError { error: DBSPError },
 
@@ -324,7 +321,6 @@ impl DetailedError for ControllerError {
             Self::EncodeError { .. } => Cow::from("EncodeError"),
             Self::InputTransportError { .. } => Cow::from("InputTransportError"),
             Self::OutputTransportError { .. } => Cow::from("OutputTransportError"),
-            Self::PipelineTerminating => Cow::from("PipelineTerminating"),
             Self::PrometheusError { .. } => Cow::from("PrometheusError"),
             Self::DbspError { error } => error.error_code(),
             Self::DbspPanic => Cow::from("DbspPanic"),
@@ -388,9 +384,6 @@ impl Display for ControllerError {
                     f,
                     "encoder error on output endpoint '{endpoint_name}': '{error}'"
                 )
-            }
-            Self::PipelineTerminating => {
-                f.write_str("Operation failed to complete because the pipeline is shutting down")
             }
             Self::PrometheusError { error } => {
                 write!(f, "Error in the Prometheus metrics module: '{error}'")
@@ -511,10 +504,6 @@ impl ControllerError {
             endpoint_name: endpoint_name.to_owned(),
             error,
         }
-    }
-
-    pub fn pipeline_terminating() -> Self {
-        Self::PipelineTerminating
     }
 
     pub fn prometheus_error<E>(error: &E) -> Self

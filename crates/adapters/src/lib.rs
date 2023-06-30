@@ -112,6 +112,7 @@
 //!   streams of the circuit.
 
 use num_derive::FromPrimitive;
+use serde::Serialize;
 
 mod catalog;
 mod controller;
@@ -125,7 +126,7 @@ pub mod transport;
 #[cfg(any(test, feature = "test-utils"))]
 pub mod test;
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq, FromPrimitive)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, FromPrimitive, Serialize)]
 pub enum PipelineState {
     /// All input endpoints are paused (or are in the process of being paused).
     Paused = 0,
@@ -141,7 +142,7 @@ pub enum PipelineState {
 pub use dbsp::DetailedError;
 
 #[cfg(feature = "server")]
-pub use server::{EgressMode, ErrorResponse};
+pub use server::{EgressMode, ErrorResponse, PipelineError};
 
 pub use catalog::{Catalog, NeighborhoodQuery, OutputQuery, OutputQueryHandles};
 pub use deinput::{
@@ -151,7 +152,7 @@ pub use format::{Encoder, InputFormat, OutputConsumer, OutputFormat, Parser};
 pub use seroutput::{SerBatch, SerCursor, SerOutputBatchHandle};
 
 pub use controller::{
-    Controller, ControllerError, ControllerStatus, FormatConfig, GlobalPipelineConfig,
+    ConfigError, Controller, ControllerError, ControllerStatus, FormatConfig, GlobalPipelineConfig,
     InputEndpointConfig, OutputEndpointConfig, PipelineConfig, TransportConfig,
 };
 pub use transport::{
