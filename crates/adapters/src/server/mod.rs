@@ -64,7 +64,7 @@ enum InitializationState {
     InitializationComplete,
 }
 
-/// Generate an appropriate error when the `state.controller` is set to
+/// Generate an appropriate error when `state.controller` is set to
 /// `None`, which can mean that the pipeline is initializing, failed to
 /// initialize or has been shut down.
 fn missing_controller_error(state: &ServerState) -> PipelineError {
@@ -280,7 +280,11 @@ where
                 record.args()
             )
         })
-        .init();
+        .try_init()
+        .unwrap_or_else(|e| {
+            // This happens in unit tests when another test has initialized logging.
+            eprintln!("Failed to initialize logging: {e}.")
+        });
     let _ = loginit_sender.send(());
 
     *state.metadata.write().unwrap() = match args.metadata_file {
