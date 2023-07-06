@@ -237,7 +237,6 @@ pub fn cast_to_date_s(value: String) -> Date {
     }
 }
 
-
 /////////// cast to dateN
 
 #[inline]
@@ -1012,8 +1011,7 @@ pub fn size_string(value: String, size: usize) -> String {
         value
     } else if value.len() > size {
         truncate(value, size)
-    }
-    else {
+    } else {
         format!("{value:<size$}")
     }
 }
@@ -1024,8 +1022,7 @@ pub fn size_string(value: String, size: usize) -> String {
 pub fn limit_string(value: String, size: usize) -> String {
     if size == 0 {
         value.trim_end().to_string()
-    }
-    else if value.len() < size {
+    } else if value.len() < size {
         value
     } else {
         // TODO: this is legal only of all excess characters are spaces

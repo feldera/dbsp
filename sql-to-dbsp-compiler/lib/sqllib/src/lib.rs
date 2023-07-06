@@ -3,8 +3,8 @@
 pub mod casts;
 pub mod geopoint;
 pub mod interval;
-pub mod timestamp;
 pub mod string;
+pub mod timestamp;
 
 use crate::interval::ShortInterval;
 use dbsp::algebra::{Semigroup, SemigroupValue, ZRingValue, F32, F64};

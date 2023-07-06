@@ -264,11 +264,12 @@ pub(crate) struct ProgramDescr {
 #[cfg_attr(test, derive(proptest_derive::Arbitrary))]
 pub(crate) enum PipelineStatus {
     Shutdown,
-    Deployed,
+    Deploying,
     Running,
     Paused,
-    // Failure isn't in-use yet -- we don't have failure detection.
+    ShuttingDown,
     Failed,
+    Unreachable,
 }
 
 impl TryFrom<String> for PipelineStatus {
@@ -276,10 +277,12 @@ impl TryFrom<String> for PipelineStatus {
     fn try_from(value: String) -> Result<Self, DBError> {
         match value.as_str() {
             "shutdown" => Ok(Self::Shutdown),
-            "deployed" => Ok(Self::Deployed),
+            "deploying" => Ok(Self::Deploying),
             "running" => Ok(Self::Running),
             "paused" => Ok(Self::Paused),
             "failed" => Ok(Self::Failed),
+            "unreachable" => Ok(Self::Unreachable),
+            "shutting_down" => Ok(Self::ShuttingDown),
             _ => Err(DBError::unknown_pipeline_status(value)),
         }
     }
@@ -289,10 +292,12 @@ impl From<PipelineStatus> for &'static str {
     fn from(val: PipelineStatus) -> Self {
         match val {
             PipelineStatus::Shutdown => "shutdown",
-            PipelineStatus::Deployed => "deployed",
+            PipelineStatus::Deploying => "deploying",
             PipelineStatus::Running => "running",
             PipelineStatus::Paused => "paused",
             PipelineStatus::Failed => "failed",
+            PipelineStatus::Unreachable => "unreachable",
+            PipelineStatus::ShuttingDown => "shutting_down",
         }
     }
 }
@@ -1346,21 +1351,20 @@ impl Storage for ProjectDB {
         }
     }
 
-    async fn set_pipeline_deployed(
+    // Record port on that the pipeline runner is listening on.
+    async fn set_pipeline_port(
         &self,
         tenant_id: TenantId,
         pipeline_id: PipelineId,
         port: u16,
     ) -> Result<(), DBError> {
-        let status: &'static str = PipelineStatus::Deployed.into();
-
         let res = self
             .pool
             .get()
             .await?
             .execute(
-                "UPDATE pipeline SET status = $3, port = $1, created = extract(epoch from now()) WHERE id = $2 AND tenant_id = $4",
-                &[&(port as i16), &pipeline_id.0, &status, &tenant_id.0],
+                "UPDATE pipeline SET port = $1, created = extract(epoch from now()) WHERE id = $2 AND tenant_id = $3",
+                &[&(port as i16), &pipeline_id.0, &tenant_id.0],
             )
             .await?;
 

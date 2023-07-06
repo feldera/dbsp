@@ -2,7 +2,7 @@
 
 #![allow(non_snake_case)]
 
-use like::{Like, Escape};
+use like::{Escape, Like};
 
 pub fn concat_s_s(left: String, right: String) -> String {
     let result = format!("{}{}", left, right);
@@ -26,11 +26,16 @@ pub fn concat_sN_sN(left: Option<String>, right: Option<String>) -> Option<Strin
 }
 
 pub fn substring3(value: String, left: i32, count: i32) -> String {
-    if count < 0 { return "".to_string() }
-    else {
+    if count < 0 {
+        return "".to_string();
+    } else {
         // character indexes in SQL start at 1
         let start = if left < 1 { 0 } else { left - 1 };
-        value.chars().skip(start as usize).take(count as usize).collect()
+        value
+            .chars()
+            .skip(start as usize)
+            .take(count as usize)
+            .collect()
     }
 }
 

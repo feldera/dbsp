@@ -2099,6 +2099,7 @@ dependencies = [
  "daemonize",
  "dbsp_adapters",
  "deadpool-postgres",
+ "either",
  "env_logger",
  "futures-util",
  "jsonwebtoken",
