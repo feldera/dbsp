@@ -933,14 +933,6 @@ impl Storage for ProjectDB {
         let mut client = self.pool.get().await?;
         let txn = client.transaction().await?;
 
-        // TODO: Ideally these queries happen in the same transaction `txn`.
-        // Need to revise the API a bit to optionally pass in a transaction
-        // object for this to work seamlessly. Also probably the program row
-        // should be locked with FOR UPDATE while reading to prevent the
-        // compiler from resetting the status field.
-        let (_pipeline, program, _connectors) =
-            self.pipeline_is_committable(tenant_id, pipeline_id).await?;
-
         // Find the revision number
         let revision_data = txn
             .query_opt(
@@ -1005,6 +997,14 @@ impl Storage for ProjectDB {
                 return Err(DBError::RevisionNotChanged);
             }
         }
+
+        // TODO: Ideally these queries happen in the same transaction `txn`.
+        // Need to revise the API a bit to optionally pass in a transaction
+        // object for this to work seamlessly. Also probably the program row
+        // should be locked with FOR UPDATE while reading to prevent the
+        // compiler from resetting the status field.
+        let (_pipeline, program, _connectors) =
+            self.pipeline_is_committable(tenant_id, pipeline_id).await?;
 
         // Copy all pipeline data to history tables
         //
