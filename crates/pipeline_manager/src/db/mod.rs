@@ -259,16 +259,186 @@ pub(crate) struct ProgramDescr {
     pub schema: Option<ProgramSchema>,
 }
 
-/// Lifecycle of a pipeline.
+/// Pipeline state.
+///
+/// This type represents the state of the pipeline tracked by the pipeline manager and
+/// returned to the API client as part of a [pipeline descriptor](`PipelineDescr`).
+///
+/// # The lifecycle of a pipeline
+/// 
+/// The following automaton captures the lifecycle of the pipeline.  Individual states
+/// and transitions of the automaton are described below.
+///
+/// * In addition to the transitions shown in the diagram, all states have an implicit
+///   "forced shutdown" transition to the `Shutdown` state.  This transition is triggered
+///   when the manager is unable to communicate with the pipeline and forces the pipeline
+///   to terminate by sending a `KILL` signal to the pipeline process or by deleting its
+///   Kubernetes pod.
+///
+/// * States labeled with the hourglass symbol (⌛) are **timed** states.  The automaton
+///   stays in timed state until the corresponding operation completes or until the manager
+///   performs a forced shutdown of the pipeline after a pre-defined timeout perioud.
+///
+/// * The `Provisioned` hyperstate contains all states where the pipeline's HTTP server is up
+///   and running and the manager can query and modify the pipeline's state via its REST
+///   endpoints.
+///
+/// * State transitions labeled with API endpoint names (`/deploy`, `/start`, `/pause`,
+///   `/shutdown`) are triggered by invoking corresponding endpoint, e.g.,
+///   `POST /v0/pipelines/{pipeline_id}/start`.
+///
+/// ```text
+///                  Shutdown◄────┐
+///                     │         │
+///                     │         │
+///              /deploy│         │
+///                     │   ⌛ShuttingDown
+///                     ▼         ▲
+///             ⌛Provisioning    │
+///                     │         │
+/// ┌───────────────────┼─────────┼───────────┐
+/// │Provisioned        │         │           │
+/// │                   ▼         │/shutdown  │
+/// │           ⌛Initializing    │           │
+/// │                   │         │           │
+/// │          ┌────────┴─────────┴─┐         │
+/// │          │        ▼           │         │
+/// │          │      Paused        │         │
+/// │          │      │    ▲        │         │
+/// │          │/start│    │/pause  │         │
+/// │          │      ▼    │        │         │
+/// │          │     Running        │         │
+/// │          └──────────┬─────────┘         │
+/// │                     │                   │
+/// │                     ▼                   │
+/// │                   Failed                │
+/// └────────────────┬────────────────────────┘
+///                  │       ▲
+///                  ▼       │
+///                 Unreachable
+/// ```
 #[derive(Serialize, ToSchema, Eq, PartialEq, Debug, Clone, Copy)]
 #[cfg_attr(test, derive(proptest_derive::Arbitrary))]
 pub(crate) enum PipelineStatus {
-    Shutdown,
-    Deploying,
-    Running,
+    /// Pipeline has not been started or has been shut down.
+    ///
+    /// The pipeline remains in this state until the user triggers
+    /// a deployment by invoking the `/deploy` endpoint.
+    Shutdown {
+        /// If the previous run of the pipeline failed, contains the cause of the failure.
+        error: Option<ErrorResponse>,
+    },
+
+    /// The manager triggered a deployment of the pipeline and is
+    /// waiting for the pipeline HTTP server to come up.
+    ///
+    /// In this state, the manager provisions a runtime for the pipeline
+    /// (e.g., a Kubernetes pod or a local process), starts the pipeline
+    /// within this runtime and waits for it to start accepting HTTP
+    /// requests.
+    ///
+    /// The manager is unable to communicate with the pipeline during this
+    /// time.  The pipeline remains in this state until:
+    ///
+    /// 1. Its HTTP server is up and running; the pipeline transitions
+    ///    to the [`Initializing`] state.
+    /// 2. A pre-defined timeout has passed.  The manager performs forced
+    ///    shutdown of the pipeline;
+    ///    returns to the [`Shutdown`] state.
+    /// 3. The user cancels the pipeline by invoking the `/shutdown` endpoint.
+    ///    The manager performs forced shutdown of the pipeline, returns to
+    ///    the [`Shutdown`] state.
+    Provisioning,
+
+    /// The pipeline is initializing its internal state and connectors.
+    ///
+    /// This state is part of the pipeline's provisioning process.  In this state,
+    /// the pipeline's HTTP server is up and running, but its query engine
+    /// and input and output connectors are still initializing.  The manager is
+    /// able to query the status of the pipeline using its status endpoint, but
+    /// no data is being processed yet.
+    ///
+    /// The pipeline remains in this state until:
+    ///
+    /// 1. Intialization completes successfully; the pipeline transitions
+    ///    to the [`Paused`] state.
+    /// 2. Intialization fails; transitions to the [`Failed`] state.
+    /// 3. A pre-defined timeout has passed.  The manager performs forced shutdown of
+    ///    the pipeline; returns to the `Shutdown` state.
+    /// 4. The user cancels the pipeline by invoking the `/shutdown` endpoint.
+    ///    The manager performs forced shutdown of the pipeline, returns to the
+    ///    [`Shutdown`] state.
+    /// 5. An unexpected runtime error renders the pipeline [`Unrechable`].
+    Initializing,
+
+    /// The pipeline is fully initialized, but data processing has been paused.
+    ///
+    /// The pipeline remains in this state until:
+    ///
+    /// 1. The user starts the pipeline by invoking the `/start` endpoint.
+    ///    The manager passes the request to the pipeline; transitions to the
+    ///    [`Running`] state.
+    /// 2. The user cancels the pipeline by invoking the `/shutdown` endpoint.
+    ///    The manager passes the shutdown request to the pipeline to perform a graceful
+    ///    shutdown; transitions to the [`ShuttingDown`] state.
+    /// 3. An unexpected runtime error renders the pipeline [`Unrechable`].
     Paused,
+
+    /// The pipeline is processing data.
+    ///
+    /// The pipeline remains in this state until:
+    ///
+    /// 1. The user pauses the pipeline by invoking the `/pause` endpoint.
+    ///    The manager passes the request to the pipeline; transitions to the
+    ///    [`Paused`] state.
+    /// 2. The user cancels the pipeline by invoking the `/shutdown` endpoint.
+    ///    The manager passes the shutdown request to the pipeline to perform a graceful
+    ///    shutdown; transitions to the [`ShuttingDown`] state.
+    /// 3. An unexpected runtime error renders the pipeline [`Unrechable`].
+    Running,
+
+    /// Graceful shutdown in progress.
+    ///
+    /// In this state, the pipeline finishes any ongoing data processing,
+    /// produces final outputs, shuts down input/output connectors and terminates.
+    ///
+    /// The pipeline remains in this state until:
+    ///
+    /// 1. Shutdown completes successfully; transitions to the [`Shutdown`] state.
+    /// 2. A pre-defined timeout has passed.  The manager performs forced shutdown of
+    ///    the pipeline; returns to the [`Shutdown`] state.
+    /// 3. The user cancels the pipeline by invoking the `/shutdown` endpoint.
+    ///    The manager performs forced shutdown of the pipeline, returns to the
+    ///    [`Shutdown`] state.
     ShuttingDown,
-    Failed,
+
+    /// The pipeline encountered a fatal error during initialization or at runtime.
+    ///
+    /// In this state, the pipeline's HTTP server is still running.  The manager is
+    /// able to query the status of the pipeline, but the query engine has been shut
+    /// down and no data is being processed.
+    ///
+    /// This state is not exposed to the user, since upon encountering the failure,
+    /// the manager performs a forced shutdown of the pipeline and transitions to
+    /// the [`Shutdown`] state.
+    ///
+    /// The pipeline remains in this state until:
+    /// 1. The manager performs a forced shutdown of the pipeline; transitions to the
+    ///    [`Shutdown`] state.
+    /// 3. An unexpected runtime error renders the pipeline [`Unrechable`].
+    Failed {
+        error: ErrorResponse,
+    },
+
+    /// An unexpected runtime error renders the pipeline unreachable.
+    ///
+    /// This can be caused by a network or hardware failure, software panic, etc. 
+    ///
+    /// The pipeline remains in this state until:
+    /// 1. The manager performs a forced shutdown of the pipeline; transitions to the
+    ///    [`Shutdown`] state.
+    /// 2. The transient error condition clears and the pipeline becomes reachable
+    ///    again.
     Unreachable,
 }
 

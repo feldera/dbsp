@@ -166,9 +166,34 @@ impl Runner {
         tenant_id: TenantId,
         pipeline_id: PipelineId,
     ) -> Result<HttpResponse, ManagerError> {
-        match self {
-            Self::Local(local) => local.deploy_pipeline(tenant_id, pipeline_id).await,
-        }
+        // Make sure that the pipeline is in a `Shutdown` state.
+        // Change state to `Provisioning` to prevent a concurrent call
+        // to `/deploy`.
+        let db = self.db.lock().await;
+        let status = db.get_pipeline_by_id(tenant_id, pipeline_id).await?.status;
+        if status != PipelineStatus::Shutdown {
+            return Err(ManagerError);
+        };
+        db.set_pipeline_status(PipelineStatus::Provisioning);
+        let pipeline_revision = self
+            .commit_and_fetch_revision(tenant_id, pipeline_id)
+            .await
+            .map_err(|e| {
+                let _ = self.set_pipeline_status(PipelineStatus::Shutdown);
+                e
+            })?;
+        drop(db);
+
+        // Kick off the provisioning process.  On error, reset state to
+        // `PipelineStatus::Shutdown`.
+        let handle = match self {
+            Self::Local(local) => local.provision_pipeline(pipeline_revision).await,
+        }.map_err(|err| {
+            self.set_pipeline_status(PipelineStatus::Shutdown);
+            err
+        })?;
+
+        self.set_pipeline_handle(handle)
     }
 
     /// Send a `/shutdown` request to the pipeline process, but keep the
@@ -184,9 +209,21 @@ impl Runner {
         tenant_id: TenantId,
         pipeline_id: PipelineId,
     ) -> Result<HttpResponse, ManagerError> {
-        match self {
-            Self::Local(local) => local.shutdown_pipeline(tenant_id, pipeline_id).await,
-        }
+        // Simply forward the shutdown request to the pipeline.
+        // The function will return an error if the pipeline is in a state where
+        // it cannot handle HTTP requests (`Shutdown` or `Provisioning`).  In all
+        // other states, including `Shutdown`, this operation is harmless and will
+        // return an error in the worst case.
+       
+        let descr = self.get_pipeline_by_id();
+        let response = self.forward_to_pipeline(tenant_id, pipeline_id, Method::GET, "shutdown").await?;
+        
+        // On success, we set the state to ShuttingDown unless a concurrent request or the
+        // polling thread marked the pipeline as destroyed.
+        let _ = self.set_pipeline_status_conditional(descr.handle, PipelineStatus::ShuttingDown).await;
+        let _ = self.update_pipeline_status();
+
+        Ok(response)
     }
 
     /// Delete the pipeline from the database. Shuts down the pipeline first if
@@ -199,21 +236,34 @@ impl Runner {
         db: &ProjectDB,
         pipeline_id: PipelineId,
     ) -> Result<HttpResponse, ManagerError> {
+        // Make sure that the pipeline is in a `Shutdown` state.
+        let db = self.db.lock().await;
+        let status = db.get_pipeline_by_id(tenant_id, pipeline_id).await?.status;
+        if status != PipelineStatus::Shutdown {
+            return Err(ManagerError);
+        };
+        db.delete_pipeline(tenant_id, pipeline_id).await?;
+        drop(db);
+
         match self {
             Self::Local(local) => local.delete_pipeline(tenant_id, db, pipeline_id).await,
         }
+
+        Ok(HttpResponse::Ok().json("Pipeline successfully deleted."))
     }
 
     pub(crate) async fn pause_pipeline(
         &self,
         tenant_id: TenantId,
         pipeline_id: PipelineId,
-    ) -> Result<HttpResponse, ManagerError> {
-        /*match self {
-            Self::Local(local) => local.pause_pipeline(tenant_id, pipeline_id).await?,
-        };*/
+    ) -> Result<(), ManagerError> {
+        // Simply forward the request to the pipeline.
+        // The function will return an error if the pipeline is in a state where
+        // it cannot handle HTTP requests (`Shutdown` or `Provisioning`).  In all
+        // other states, this operation is harmless and will return an error in
+        // the worst case.
         let result = self.forward_to_pipeline(tenant_id, pipeline_id, Method::GET, "pause").await;
-        self.update_pipeline_status();
+        let _ = self.update_pipeline_status(tenant_id, pipeline_id).await;
         result
     }
 
@@ -222,11 +272,8 @@ impl Runner {
         tenant_id: TenantId,
         pipeline_id: PipelineId,
     ) -> Result<HttpResponse, ManagerError> {
-        /*match self {
-            Self::Local(local) => local.start_pipeline(tenant_id, pipeline_id).await?,
-        };*/
         let result = self.forward_to_pipeline(tenant_id, pipeline_id, Method::GET, "start").await;
-        self.update_pipeline_status();
+        let _ = self.update_pipeline_status(tenant_id, pipeline_id).await;
         result
     }
 
@@ -261,6 +308,21 @@ impl Runner {
             }
         }
     }
+
+    pub(crate) async fn update_pipeline_status (
+        &self,
+        tenant_id: TenantId,
+        pipeline_id: PipelineId,
+    ) -> Result<HttpResponse, ManagerError> {
+        match self {
+            Self::Local(local) => {
+                local
+                    .update_pipeline_status(tenant_id, pipeline_id)
+                    .await
+            }
+        }
+    }
+
 }
 
 impl LocalRunner {
@@ -301,76 +363,95 @@ impl LocalRunner {
             .await?)
     }
 
-    pub(crate) async fn deploy_pipeline(
+    pub(crate) async fn provision_pipeline(
         &self,
-        tenant_id: TenantId,
-        pipeline_id: PipelineId,
-    ) -> Result<HttpResponse, ManagerError> {
-        self.compare_and_set_pipeline_status(PipelineStatus::Shutdown, PipelineStatus::Deploying)?;
-
-        let pipeline_revision = self
-            .commit_and_fetch_revision(tenant_id, pipeline_id)
-            .await
-            .map_err(|e| {
-                let _ = self.set_pipeline_status(PipelineStatus::Shutdown);
-                e
-            })?;
- 
+        pipeline_revision,
+    ) -> Result<String, ManagerError> {
         let mut pipeline_process = self.start(pipeline_revision).await.map_err(|e| {
             let _ = self.set_pipeline_status(PipelineStatus::Shutdown);
             e
         })?;
 
-        poll_pipeline_status()?;
-
-        Ok(())
+        Ok(pipeline_process.id().to_string())
     }
 
-    pub fn update_pipeline_status() {
-        let (status, port) = self.get_pipeline_status();
+    pub async fn update_pipeline_status(&self, pipeline_id) {
+        let (status, status_since, handle) = self.get_pipeline_by_id(pipeline_id);
         match status {
             PipelineStatus::Shutdown => {
                 // do nothing.
             }
-            PipelineStatus::Deploying if port == 0 => {
-                // check port file
-                // set port file
-                // call self recursively.
+            PipelineStatus::Provisioning => {
+                match Self::read_pipeline_port_file(pipeline_id) {
+                    Ok(Some(port_number)) => {
+                        self.set_pipeline_status_and_port(PipelineStatus::Initializing, port_number)?;
+                        self.update_pipeline_status(pipeline_id)?;
+                    }
+                    Ok(None) => {
+                        if status_since.elapsed() > PORT_FILE_TIMEOUT {
+                            self.set_pipeline_status(PipelineStatus::Unreachable)?;
+                        }
+                    };
+                    Err(e) => {
+                        self.set_pipeline_status(???)
+                    }
+                }
             }
             PipelineStatus::ShuttingDown => {
-                // poll_pipeline_status, change unreachable to Shutdown.
+                match self.poll_pipeline_status(pipeline_id) {
+                    PipelineStatus::Unreachable => {
+                        self.set_pipeline_status(PipelineStatus::Shutdown)?;
+                    }
+                    _ => {}
+                }
             }
-            PipelineStatus::Deploying | PipelineStatus::Running | PipelineStatus::Paused | PipelineStatus::Failed | PipelineStatus::Unreachable => {
-                // poll_pipeline_status
+            PipelineStatus::Initializing => {
+                match self.poll_pipeline_status(pipeline_id)? {
+                    PipelineStatus::Initializing => {
+                        if status_since.elapsed() > STARTUP_TIMEOUT => {
+                            self.set_pipeline_status(PipelineStatus::Unreachable)?;
+                        }
+                    }
+                    status => self.set_pipeline_status(status)?,
+                }
+            }
+            PipelineStatus::Unreachable => {
+                // Remember the original reason the pipeline became unreachable.
+                match self.poll_pipeline_status(pipeline_id)? {
+                    PipelineStatus::Unreachable => {}
+                    status => self.set_pipeline_status(new_status)?
+                }
+            }
+            PipelineStatus::Running |
+            PipelineStatus::Paused |
+            PipelineStatus::Failed => {
+                let new_status = self.poll_pipeline_status(pipeline_id);
+                if new_status != status {
+                    self.set_pipeline_status(new_status)?
+                };
             }
         }
+    }
 
-        match Self::wait_for_startup(pipeline_id, &self.config.port_file_path(pipeline_id)).await {
+    fn read_pipeline_port_file(&self, pipeline_id: PipelineId) -> Result<Option<u16>, ManagerError>
+    {
+        let port_file_path = self.config.port_file_path(pipeline_id);
+
+        match fs::read_to_string(port_file_path).await {
             Ok(port) => {
-                // Store pipeline in the database.
-                if let Err(e) = self
-                    .db
-                    .lock()
-                    .await
-                    .set_pipeline_port_number(tenant_id, pipeline_id, port)
-                    .await
-                {
-                    let _ = pipeline_process.kill().await;
-                    Err(e)?
+                let parse = port.trim().parse::<u16>();
+                match parse {
+                    Ok(port) => {
+                        Ok(Some(port))
+                    }
+                    Err(e) => Err(ManagerError::from(RunnerError::PortFileParseError {
+                        pipeline_id,
+                        error: e.to_string(),
+                    }))
                 };
-                Ok(HttpResponse::Ok().json("Pipeline successfully deployed."))
             }
             Err(e) => {
-                let _ = pipeline_process.kill().await;
-                self.db
-                    .lock()
-                    .await
-                    .set_pipeline_status(tenant_id, pipeline_id, PipelineStatus::Shutdown)
-                    .await?;
-                match e {
-                    Either::Left(manager_error) => Err(manager_error),
-                    Either::Right(http_response) => Ok(http_response),
-                }
+                Ok(None)
             }
         }
     }
@@ -412,14 +493,6 @@ impl LocalRunner {
         db: &ProjectDB,
         pipeline_id: PipelineId,
     ) -> Result<HttpResponse, ManagerError> {
-        // Kill pipeline.
-        let response = self
-            .do_shutdown_pipeline(tenant_id, db, pipeline_id)
-            .await?;
-        if !response.status().is_success() {
-            return Ok(response);
-        }
-
         // Delete pipeline directory.
         match remove_dir_all(self.config.pipeline_dir(pipeline_id)).await {
             Ok(_) => (),
@@ -431,9 +504,6 @@ impl LocalRunner {
                 );
             }
         }
-        db.delete_pipeline(tenant_id, pipeline_id).await?;
-
-        Ok(HttpResponse::Ok().json("Pipeline successfully deleted."))
     }
 
     pub(crate) async fn forward_to_pipeline(
@@ -604,57 +674,10 @@ impl LocalRunner {
             })?;
 
         Ok(pipeline_process)
-    }
+    } 
 
-    async fn wait_for_startup(
-        pipeline_id: PipelineId,
-        port_file_path: &Path,
-    ) -> Result<u16, Either<ManagerError, HttpResponse>> {
-        // Wait for the pipeline server to start and create a port number file.
-        let start = Instant::now();
-        let mut count = 0;
-        let port_number;
-        loop {
-            let res: Result<String, std::io::Error> = fs::read_to_string(port_file_path).await;
-            match res {
-                Ok(port) => {
-                    let parse = port.trim().parse::<u16>();
-                    match parse {
-                        Ok(port) => {
-                            port_number = port;
-                            break;
-                        }
-                        Err(e) => Err(ManagerError::from(RunnerError::PortFileParseError {
-                            pipeline_id,
-                            error: e.to_string(),
-                        }))
-                        .map_err(Either::Left)?,
-                    };
-                }
-                Err(e) => {
-                    if start.elapsed() > PORT_FILE_TIMEOUT {
-                        Err(ManagerError::from(
-                            RunnerError::PipelineInitializationTimeout {
-                                pipeline_id,
-                                timeout: PORT_FILE_TIMEOUT,
-                            },
-                        ))
-                        .map_err(Either::Left)?
-                    }
-                    if start.elapsed() > PORT_FILE_LOG_QUIET_PERIOD && (count % 10) == 0 {
-                        log::info!("Could not read runner port file yet. Retrying\n{}", e);
-                    }
-                    count += 1;
-                }
-            }
-            sleep(PORT_FILE_POLL_PERIOD).await;
-        }
-
-        // Now wait for the pipeline to initialize.
-        let start = Instant::now();
-        let mut count = 0;
-
-        loop {
+    async fn poll_pipeline_status(&self, pipeline_id: PipelineId) -> Result<PipelineStatus, ManagerError> {
+        /*
             let response =
                 Self::do_forward_to_pipeline(pipeline_id, Method::GET, "stats", port_number)
                     .await
@@ -684,11 +707,7 @@ impl LocalRunner {
 
             sleep(STARTUP_POLL_PERIOD).await;
         }
-
-        Ok(port_number)
-    }
-
-    async fn update_pipeline_status(&self, pipeline_id: PipelineId) -> {
+         */
         let response =
             Self::do_forward_to_pipeline(pipeline_id, Method::GET, "stats", port_number)
             .await
