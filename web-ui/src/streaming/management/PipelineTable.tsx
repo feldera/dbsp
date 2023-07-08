@@ -3,12 +3,19 @@
 // The rows of the table can be expanded for even more details.
 
 import { useCallback, useEffect, useState } from 'react'
+import React from 'react'
 import Link from 'next/link'
 import Box from '@mui/material/Box'
 import Card from '@mui/material/Card'
 import Paper from '@mui/material/Paper'
 import Grid from '@mui/material/Grid'
-import { DataGridPro, DataGridProProps, GridColumns, GridRenderCellParams } from '@mui/x-data-grid-pro'
+import {
+  DataGridPro,
+  DataGridProProps,
+  GRID_DETAIL_PANEL_TOGGLE_COL_DEF,
+  GridColumns,
+  GridRenderCellParams
+} from '@mui/x-data-grid-pro'
 import CustomChip from 'src/@core/components/mui/chip'
 import Badge from '@mui/material/Badge'
 import IconButton from '@mui/material/IconButton'
@@ -19,6 +26,7 @@ import ListItemText from '@mui/material/ListItemText'
 import ListItemIcon from '@mui/material/ListItemIcon'
 import ListSubheader from '@mui/material/ListSubheader'
 import Tooltip from '@mui/material/Tooltip'
+import ExpandMoreIcon from '@mui/icons-material/ExpandMore'
 
 import AnalyticsPipelineTput from 'src/streaming/management/AnalyticsPipelineTput'
 import QuickSearchToolbar from 'src/components/table/QuickSearchToolbar'
@@ -373,7 +381,44 @@ export default function PipelineTable() {
     }
   }
 
+  // Only show the details tab button if this pipeline has a revision
+  function CustomDetailPanelToggle(props: Pick<GridRenderCellParams, 'id' | 'value' | 'row'>) {
+    const { value: isExpanded } = props
+    const [hasRevision, setHasRevision] = useState<boolean>(false)
+
+    const pipelineRevisionQuery = useQuery<PipelineRevision | null>([
+      'pipelineLastRevision',
+      { pipeline_id: props.row.pipeline_id }
+    ])
+    useEffect(() => {
+      if (!pipelineRevisionQuery.isLoading && !pipelineRevisionQuery.isError && pipelineRevisionQuery.data != null) {
+        setHasRevision(true)
+      }
+    }, [pipelineRevisionQuery.isLoading, pipelineRevisionQuery.isError, pipelineRevisionQuery.data])
+
+    return hasRevision ? (
+      <IconButton size='small' tabIndex={-1} aria-label={isExpanded ? 'Close' : 'Open'}>
+        <ExpandMoreIcon
+          sx={{
+            transform: `rotateZ(${isExpanded ? 180 : 0}deg)`,
+            transition: theme =>
+              theme.transitions.create('transform', {
+                duration: theme.transitions.duration.shortest
+              })
+          }}
+          fontSize='inherit'
+        />
+      </IconButton>
+    ) : (
+      <></>
+    )
+  }
+
   const columns: GridColumns = [
+    {
+      ...GRID_DETAIL_PANEL_TOGGLE_COL_DEF,
+      renderCell: params => <CustomDetailPanelToggle id={params.id} value={params.value} row={params.row} />
+    },
     { field: 'name', headerName: 'Name', editable: true, flex: 2 },
     { field: 'description', headerName: 'Description', editable: true, flex: 3 },
     {
