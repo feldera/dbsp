@@ -8,8 +8,68 @@ import { useQuery } from '@tanstack/react-query'
 import { useRouter } from 'next/router'
 import { useEffect, useState } from 'react'
 import PageHeader from 'src/layouts/components/page-header'
-import { PipelineDescr, PipelineId } from 'src/types/manager'
+import { PipelineDescr, PipelineId, PipelineRevision } from 'src/types/manager'
 import { IntrospectionTable } from 'src/streaming/introspection/IntrospectionTable'
+import {
+  Breadcrumbs,
+  FormControl,
+  InputLabel,
+  Link,
+  ListSubheader,
+  MenuItem,
+  Select,
+  SelectChangeEvent
+} from '@mui/material'
+import { Icon } from '@iconify/react'
+
+const TitleBreadCrumb = (props: { pipeline: PipelineDescr; relation: string }) => {
+  const pipeline_id = props.pipeline.pipeline_id
+  const pipelineRevisionQuery = useQuery<PipelineRevision>(['pipelineLastRevision', { pipeline_id: pipeline_id }])
+  const [tables, setTables] = useState<string[]>([])
+  const [views, setViews] = useState<string[]>([])
+
+  const router = useRouter()
+  const view = router.query.view
+
+  useEffect(() => {
+    if (!pipelineRevisionQuery.isLoading && !pipelineRevisionQuery.isError) {
+      const pipelineRevision = pipelineRevisionQuery.data
+      const program = pipelineRevision?.program
+      setTables(program?.schema?.inputs.map(v => v.name) || [])
+      setViews(program?.schema?.outputs.map(v => v.name) || [])
+    }
+  }, [pipelineRevisionQuery.isLoading, pipelineRevisionQuery.isError, pipelineRevisionQuery.data])
+
+  const onChange = (e: SelectChangeEvent<string>) => {
+    e.preventDefault()
+    router.push(`/streaming/introspection/${pipeline_id}/${e.target.value}`)
+  }
+
+  return typeof view === 'string' ? (
+    <Breadcrumbs separator={<Icon icon='bx:chevron-right' fontSize={20} />} aria-label='breadcrumb'>
+      <Link href='/streaming/management/'>{props.pipeline.name}</Link>
+      <FormControl>
+        <InputLabel htmlFor='relation-select'>Relation</InputLabel>
+        <Select label='Select Relation' defaultValue={view} id='relation-select' onChange={onChange}>
+          <ListSubheader>Tables</ListSubheader>
+          {tables.map(item => (
+            <MenuItem key={item} value={item}>
+              {item}
+            </MenuItem>
+          ))}
+          <ListSubheader>Views</ListSubheader>
+          {views.map(item => (
+            <MenuItem key={item} value={item}>
+              {item}
+            </MenuItem>
+          ))}
+        </Select>
+      </FormControl>
+    </Breadcrumbs>
+  ) : (
+    <></>
+  )
+}
 
 const IntrospectInputOutput = () => {
   const [pipelineId, setPipelineId] = useState<PipelineId | undefined>(undefined)
@@ -43,11 +103,7 @@ const IntrospectInputOutput = () => {
     tableOrView && (
       <Grid container spacing={6} className='match-height'>
         <PageHeader
-          title={
-            <Typography variant='h5'>
-              {pipelineDescr?.name} / {tableOrView}
-            </Typography>
-          }
+          title={<TitleBreadCrumb pipeline={pipelineDescr} relation={tableOrView} />}
           subtitle={<Typography variant='body2'>Introspection</Typography>}
         />
 
