@@ -40,7 +40,9 @@ CREATE TABLE IF NOT EXISTS pipeline (
     last_revision uuid,
     -- TODO: add 'host' field when we support remote pipelines.
     port smallint,
-    status varchar NOT NULL,
+    desired_status varchar NOT NULL,
+    current_status varchar NOT NULL,
+    error varchar,
     created bigint,
     FOREIGN KEY (program_id, tenant_id) REFERENCES program(id, tenant_id) ON DELETE CASCADE,
     CONSTRAINT unique_pipeline_name UNIQUE(tenant_id, name)

@@ -324,10 +324,7 @@ pub(crate) enum PipelineStatus {
     ///
     /// The pipeline remains in this state until the user triggers
     /// a deployment by invoking the `/deploy` endpoint.
-    Shutdown {
-        /// If the previous run of the pipeline failed, contains the cause of the failure.
-        error: Option<ErrorResponse>,
-    },
+    Shutdown,
 
     /// The manager triggered a deployment of the pipeline and is
     /// waiting for the pipeline HTTP server to come up.
@@ -425,10 +422,8 @@ pub(crate) enum PipelineStatus {
     /// The pipeline remains in this state until:
     /// 1. The manager performs a forced shutdown of the pipeline; transitions to the
     ///    [`Shutdown`] state.
-    /// 3. An unexpected runtime error renders the pipeline [`Unrechable`].
-    Failed {
-        error: ErrorResponse,
-    },
+    /// 3. An unexpected runtime error renders the pipeline [`Unreachable`].
+    Failed,
 
     /// An unexpected runtime error renders the pipeline unreachable.
     ///
