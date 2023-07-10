@@ -165,35 +165,10 @@ impl Runner {
         &self,
         tenant_id: TenantId,
         pipeline_id: PipelineId,
-    ) -> Result<HttpResponse, ManagerError> {
-        // Make sure that the pipeline is in a `Shutdown` state.
-        // Change state to `Provisioning` to prevent a concurrent call
-        // to `/deploy`.
-        let db = self.db.lock().await;
-        let status = db.get_pipeline_by_id(tenant_id, pipeline_id).await?.status;
-        if status != PipelineStatus::Shutdown {
-            return Err(ManagerError);
-        };
-        db.set_pipeline_status(PipelineStatus::Provisioning);
-        let pipeline_revision = self
-            .commit_and_fetch_revision(tenant_id, pipeline_id)
-            .await
-            .map_err(|e| {
-                let _ = self.set_pipeline_status(PipelineStatus::Shutdown);
-                e
-            })?;
-        drop(db);
-
-        // Kick off the provisioning process.  On error, reset state to
-        // `PipelineStatus::Shutdown`.
-        let handle = match self {
-            Self::Local(local) => local.provision_pipeline(pipeline_revision).await,
-        }.map_err(|err| {
-            self.set_pipeline_status(PipelineStatus::Shutdown);
-            err
-        })?;
-
-        self.set_pipeline_handle(handle)
+    ) -> Result<(), ManagerError> {
+        self.commit_revision(tenant_id, pipeline_id).await?;
+        self.set_desired_state(tenant_id, pipeline_id, PipelineStatus::Paused)?;
+        self.notify_pipeline_automaton(tenant_id, pipeline_id)
     }
 
     /// Send a `/shutdown` request to the pipeline process, but keep the
@@ -208,22 +183,9 @@ impl Runner {
         &self,
         tenant_id: TenantId,
         pipeline_id: PipelineId,
-    ) -> Result<HttpResponse, ManagerError> {
-        // Simply forward the shutdown request to the pipeline.
-        // The function will return an error if the pipeline is in a state where
-        // it cannot handle HTTP requests (`Shutdown` or `Provisioning`).  In all
-        // other states, including `Shutdown`, this operation is harmless and will
-        // return an error in the worst case.
-       
-        let descr = self.get_pipeline_by_id();
-        let response = self.forward_to_pipeline(tenant_id, pipeline_id, Method::GET, "shutdown").await?;
-        
-        // On success, we set the state to ShuttingDown unless a concurrent request or the
-        // polling thread marked the pipeline as destroyed.
-        let _ = self.set_pipeline_status_conditional(descr.handle, PipelineStatus::ShuttingDown).await;
-        let _ = self.update_pipeline_status();
-
-        Ok(response)
+    ) -> Result<(), ManagerError> {
+        self.set_desired_state(tenant_id, pipeline_id, PipelineStatus::Shutdown)?;
+        self.notify_pipeline_automaton(tenant_id, pipeline_id)
     }
 
     /// Delete the pipeline from the database. Shuts down the pipeline first if
@@ -235,21 +197,18 @@ impl Runner {
         tenant_id: TenantId,
         db: &ProjectDB,
         pipeline_id: PipelineId,
-    ) -> Result<HttpResponse, ManagerError> {
+    ) -> Result<(), ManagerError> {
         // Make sure that the pipeline is in a `Shutdown` state.
         let db = self.db.lock().await;
-        let status = db.get_pipeline_by_id(tenant_id, pipeline_id).await?.status;
+        
+        let status = txn.get_pipeline_by_id(tenant_id, pipeline_id).await?.status;
         if status != PipelineStatus::Shutdown {
             return Err(ManagerError);
         };
-        db.delete_pipeline(tenant_id, pipeline_id).await?;
+        txn.delete_pipeline(tenant_id, pipeline_id).await?;
+        txn.commit()
         drop(db);
-
-        match self {
-            Self::Local(local) => local.delete_pipeline(tenant_id, db, pipeline_id).await,
-        }
-
-        Ok(HttpResponse::Ok().json("Pipeline successfully deleted."))
+        // No need to do anything else since the pipeline was in the `Shutdown` state.  
     }
 
     pub(crate) async fn pause_pipeline(
@@ -257,24 +216,17 @@ impl Runner {
         tenant_id: TenantId,
         pipeline_id: PipelineId,
     ) -> Result<(), ManagerError> {
-        // Simply forward the request to the pipeline.
-        // The function will return an error if the pipeline is in a state where
-        // it cannot handle HTTP requests (`Shutdown` or `Provisioning`).  In all
-        // other states, this operation is harmless and will return an error in
-        // the worst case.
-        let result = self.forward_to_pipeline(tenant_id, pipeline_id, Method::GET, "pause").await;
-        let _ = self.update_pipeline_status(tenant_id, pipeline_id).await;
-        result
+        self.set_desired_state(tenant_id, pipeline_id, PipelineStatus::Paused)?;
+        self.notify_pipeline_automaton(tenant_id, pipeline_id)
     }
 
     pub(crate) async fn start_pipeline(
         &self,
         tenant_id: TenantId,
         pipeline_id: PipelineId,
-    ) -> Result<HttpResponse, ManagerError> {
-        let result = self.forward_to_pipeline(tenant_id, pipeline_id, Method::GET, "start").await;
-        let _ = self.update_pipeline_status(tenant_id, pipeline_id).await;
-        result
+    ) -> Result<(), ManagerError> {
+        self.set_desired_state(tenant_id, pipeline_id, PipelineStatus::Running)?;
+        self.notify_pipeline_automaton(tenant_id, pipeline_id)
     }
 
     pub(crate) async fn forward_to_pipeline(
@@ -323,24 +275,11 @@ impl Runner {
         }
     }
 
-}
-
-impl LocalRunner {
-    pub(crate) fn new(
-        db: Arc<Mutex<ProjectDB>>,
-        config: &ManagerConfig,
-    ) -> Result<Self, ManagerError> {
-        Ok(Self {
-            db,
-            config: config.clone(),
-        })
-    }
-
     /// Retrieves the last revision for a pipeline.
     ///
     /// Tries to create a new revision if this pipeline never had a revision
     /// created before.
-    async fn commit_and_fetch_revision(
+    async fn commit_revision(
         &self,
         tenant_id: TenantId,
         pipeline_id: PipelineId,
@@ -352,17 +291,213 @@ impl LocalRunner {
             .create_pipeline_revision(Uuid::now_v7(), tenant_id, pipeline_id)
             .await
         {
-            Ok(_revision) => (),
-            Err(DBError::RevisionNotChanged) => (),
-            Err(e) => return Err(e.into()),
-        };
+            Ok(_revision) => Ok(()),
+            Err(DBError::RevisionNotChanged) => Ok(()),
+            Err(e) => Err(e)?,
+        }
+    }
+}
 
-        // This should normally succeed (because we just created a revision)
-        Ok(db
-            .get_last_committed_pipeline_revision(tenant_id, pipeline_id)
-            .await?)
+impl LocalRunner {
+    pub(crate) fn new(
+        db: Arc<Mutex<ProjectDB>>,
+        config: &ManagerConfig,
+    ) -> Result<Self, ManagerError> {
+        let mut result = Self {
+            db,
+            config: config.clone(),
+        }
+
+        // TODO: kill stale pipelines.
+
+        Ok()
     }
 
+    async fn notify_pipeline_automaton(&self, tenant_id: TenantId, pipeline_id: PipelineId) {
+        let (notifier, _handle) = self.pipelines.entry(pipeline_id).or_insert_with(|| {
+            notifier = Notify::new();
+            handle = spawn(|| Self::pipeline_automaton(db.clone(), notifier.clone(), tenant_id, pipeline_id));
+            (notifier, handle)
+        });
+        notifier.notify();
+    }
+    
+    async fn pipeline_automaton(db: Arc<Mutex<ProjectDB>>, notifier: Notify, tenant_id: TenantId, pipeline_id: PipelineId) -> Result<(), ManagerError>{
+        do_pipeline_automaton(db, notifier, pipeline_id).map_err(|e| {
+            error!("Pipeline automaton '{pipeline_id}' terminated with error: '{e}'");
+            e
+        }
+    }
+
+    async fn do_pipeline_automaton(db: Arc<Mutex<ProjectDB>>, notifier: Notify, tenant_id: TenantId, pipeline_id: PipelineId) -> Result<(), ManagerError> {
+        let mut poll_timeout = Duration::DEFAULT_PIPELINE_POLL_PERIOD;
+    
+        loop {
+            timeout(poll_timeout, notifier.notified());
+            poll_timeout = Duration::DEFAULT_PIPELINE_POLL_PERIOD;
+
+            txn = db.transaction();
+            let mut pipeline = db.get_pipeline_runtime_state(txn, pipeline_id).await?;
+
+            if pipeline.current_status == PipelineStatus::Shutdown &&
+               pipeline.desired_status != PipelineStatus::Shutdown
+            {
+                pipeline.set_current_status(PipelineStatus::Provisioning, None)?;
+                let revision = db.set_pipeline_runtime_status(txn, pipeline_id)?;
+                txn.commit();
+
+                match self.start(revision) {
+                    Ok(child) => {
+                        pipeline.set_pid(child.id());
+                        db.set_pipeline_runtime_status(pipeline)?;
+                    }
+                    Err(e) {
+                        pipeline.set_current_status(PipelineStatus::Shutdown, Some(e));
+                        pipeline.set_desired_status(PipelineStatus::Shutdown);
+                        db.set_pipeline_runtime_status(pipeline)?;
+                    }
+                }
+                continue;
+            } else {
+                txn.commit();
+            }
+
+            match (pipeline.current_status, pipeline.desired_status) {
+                (PipelineStatus::Provisioning, PipelineStatus::Running) |
+                (PipelineStatus::Provisioning, PipelineStatus::Paused) => {
+                    match Self::read_pipeline_port_file(pipeline_id) {
+                        Ok(Some(port)) => {
+                            pipeline.set_current_status(PipelineStatus::Initializing);
+                            pipeline.set_port(port);
+                            db.set_pipeline_runtime_status(pipeline)?;
+                        }
+                        Ok(None) => {
+                            if pipeline.status_since.elapsed() > PROVISIONING_TIMEOUT {
+                                Self::force_kill_pipeline(pipeline, ErrorResponse);
+                            } else {
+                                poll_timeout = PROVISIONING_POLL_PERIOD;
+                            }
+                        }
+                        Err(e) => {
+                            Self::force_kill_pipeline(pipeline, ErrorResponse);
+                        }
+                    }
+                }
+                (PipelineStatus::Provisioning, PipelineStatus::Shutdown) => {
+                    Self::kill(pipeline.pid);
+                    pipeline.set_current_status(PipelineStatus::Shutdown, None);
+                    db.set_pipeline_runtime_status(pipeline)?;
+                }
+                (PipelineStatus::Initializing, PipelineStartup::Running) |
+                (PipelineStatus::Initializing, PipelineStartup::Paused) => {
+                    match self.forward_to_pipeline(pipeline_id, pipeline.port, Method::GET, "stats") {
+                        Err(e) => {
+                            Self::force_kill_pipeline(pipeline, ErrorResponse);
+                        }
+                        Ok(response) => {
+                            if response.status().is_success() {
+                                pipeline.set_current_status(PipelineStatus::Paused, None);
+                                db.set_pipeline_runtime_status(pipeline)?;
+                            } else if response.status == StatusCode::SERVICE_UNAVAILABLE {
+                                if pipeline.status_since.elapsed > INITIALIZATION_TIMEOUT {
+                                    Self::force_kill_pipeline(pipeline, ErrorResponse);
+                                } else {
+                                    poll_timeout = INITIALIZATION_POLL_PERIOD;
+                                }
+                            } else {
+                                Self::force_kill_pipeline(pipeline, ErrorResponse);
+                            }
+                        }
+                    }
+                }
+                (PipelineStatus::Initializing, PipelineStatus::Shutdown) => {
+                    Self::kill(pipeline.pid);
+                    pipeline.set_current_status(PipelineStatus::Shutdown, None);
+                    db.set_pipeline_runtime_status(pipeline)?;
+                }
+                (PipelineStatus::Paused, PipelineStatus::Running) => {
+                    match self.forward_to_pipeline(pipeline_id, pipeline.port, Method::GET, "start") {
+                        Err(e) => {
+                            Self::force_kill_pipeline(pipeline, ErrorResponse);
+                        }
+                        Ok(response) => {
+                            if response.status().is_success() {
+                                pipeline.set_current_status(PipelineStatus::Running, None);
+                                db.set_pipeline_runtime_status(pipeline)?;
+                            } else {
+                                Self::force_kill_pipeline(pipeline, ErrorResponse);
+                            }
+                        }
+                    }
+                }
+                (PipelineStatus::Running, PipelineStatus::Paused) => {
+                    match self.forward_to_pipeline(pipeline_id, pipeline.port, Method::GET, "pause") {
+                        Err(e) => {
+                            Self::force_kill_pipeline(pipeline, ErrorResponse);
+                        }
+                        Ok(response) => {
+                            if response.status().is_success() {
+                                pipeline.set_current_status(PipelineStatus::Paused, None);
+                                db.set_pipeline_runtime_status(pipeline)?;
+                            } else {
+                                Self::force_kill_pipeline(pipeline, ErrorResponse);
+                            }
+                        }
+                    }
+                }
+                (PipelineStatus::Running, PipelineStatus::Shutdown) |
+                (PipelineStatus::Paused, PipelineStatus::Shutdown) => {
+                    match self.forward_to_pipeline(pipeline_id, pipeline.port, Method::GET, "shutdown") {
+                        Err(e) => {
+                            Self::force_kill_pipeline(pipeline, ErrorResponse);
+                        }
+                        Ok(response) => {
+                            if response.status().is_success() {
+                                pipeline.set_current_status(PipelineStatus::ShuttingDown, None);
+                                db.set_pipeline_runtime_status(pipeline)?;
+                            } else {
+                                Self::force_kill_pipeline(pipeline, ErrorResponse);
+                            }
+                        }
+                    }
+                }
+                (PipelineStatus::ShuttingDown, _) => {
+                    if !process_exists(pipeline.pid) {
+                        pipeline.set_current_status(PipelineStatus::Shutdown, None);
+                        db.set_pipeline_runtime_status(pipeline)?;
+                    } else if pipeline.status_since.elapsed > SHUTDOWN_TIMEOUT {
+                        Self::force_kill_pipeline(pipeline, ErrorResponse);
+                    } else {
+                        poll_timeout = SHUTDOWN_POLL_PERIOD;
+                    }
+                }
+
+                (PipelineStatus::Running, _) |
+                (PipelineStatus::Paused, _) => {
+                    match self.forward_to_pipeline(pipeline_id, pipeline.port, Method::GET, "stats") {
+                        Err(e) => {
+                            Self::force_kill_pipeline(pipeline, ErrorResponse);
+                        }
+                        Ok(response) => {
+                            if !response.status().is_success() {
+                                Self::force_kill_pipeline(pipeline, ErrorResponse);
+                            }
+                        }
+                    }
+
+                }
+            }
+        }
+    }
+
+    fn force_kill_pipeline(mut pipeline: PipelineRutimeStatus, error: ErrorResponse) {
+        Self::kill(pipeline.pid);
+        pipeline.set_current_status(PipelineStatus::Shutdown, Some(error));
+        pipeline.set_desired_status(PipelineStatus::Shutdown);
+        db.set_pipeline_runtime_status(pipeline_id, pipeline);
+    }
+
+    /*
     pub(crate) async fn provision_pipeline(
         &self,
         pipeline_revision,
@@ -432,6 +567,7 @@ impl LocalRunner {
             }
         }
     }
+    */
 
     fn read_pipeline_port_file(&self, pipeline_id: PipelineId) -> Result<Option<u16>, ManagerError>
     {
@@ -456,16 +592,16 @@ impl LocalRunner {
         }
     }
 
-    pub(crate) async fn shutdown_pipeline(
+    /*pub(crate) async fn shutdown_pipeline(
         &self,
         tenant_id: TenantId,
         pipeline_id: PipelineId,
     ) -> Result<HttpResponse, ManagerError> {
         let db = self.db.lock().await;
         self.do_shutdown_pipeline(tenant_id, &db, pipeline_id).await
-    }
+    }*/
 
-    pub(crate) async fn pause_pipeline(
+    /*pub(crate) async fn pause_pipeline(
         &self,
         tenant_id: TenantId,
         pipeline_id: PipelineId,
@@ -474,9 +610,9 @@ impl LocalRunner {
         Ok(db
             .set_pipeline_status(tenant_id, pipeline_id, PipelineStatus::Paused)
             .await?)
-    }
+    }*/
 
-    pub(crate) async fn start_pipeline(
+    /*pub(crate) async fn start_pipeline(
         &self,
         tenant_id: TenantId,
         pipeline_id: PipelineId,
@@ -504,7 +640,7 @@ impl LocalRunner {
                 );
             }
         }
-    }
+    }*/
 
     pub(crate) async fn forward_to_pipeline(
         &self,
@@ -728,6 +864,7 @@ impl LocalRunner {
         }
     }
 
+    /*
     async fn do_shutdown_pipeline(
         &self,
         tenant_id: TenantId,
@@ -777,4 +914,5 @@ impl LocalRunner {
             ))
         }
     }
+    */
 }

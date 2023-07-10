@@ -409,22 +409,6 @@ pub(crate) enum PipelineStatus {
     ///    [`Shutdown`] state.
     ShuttingDown,
 
-    /// The pipeline encountered a fatal error during initialization or at runtime.
-    ///
-    /// In this state, the pipeline's HTTP server is still running.  The manager is
-    /// able to query the status of the pipeline, but the query engine has been shut
-    /// down and no data is being processed.
-    ///
-    /// This state is not exposed to the user, since upon encountering the failure,
-    /// the manager performs a forced shutdown of the pipeline and transitions to
-    /// the [`Shutdown`] state.
-    ///
-    /// The pipeline remains in this state until:
-    /// 1. The manager performs a forced shutdown of the pipeline; transitions to the
-    ///    [`Shutdown`] state.
-    /// 3. An unexpected runtime error renders the pipeline [`Unreachable`].
-    Failed,
-
     /// An unexpected runtime error renders the pipeline unreachable.
     ///
     /// This can be caused by a network or hardware failure, software panic, etc. 
@@ -442,10 +426,10 @@ impl TryFrom<String> for PipelineStatus {
     fn try_from(value: String) -> Result<Self, DBError> {
         match value.as_str() {
             "shutdown" => Ok(Self::Shutdown),
-            "deploying" => Ok(Self::Deploying),
-            "running" => Ok(Self::Running),
+            "provisioning" => Ok(Self::Provisioning),
+            "initializing" => Ok(Self::Initializing),
             "paused" => Ok(Self::Paused),
-            "failed" => Ok(Self::Failed),
+            "running" => Ok(Self::Running),
             "unreachable" => Ok(Self::Unreachable),
             "shutting_down" => Ok(Self::ShuttingDown),
             _ => Err(DBError::unknown_pipeline_status(value)),
@@ -457,10 +441,10 @@ impl From<PipelineStatus> for &'static str {
     fn from(val: PipelineStatus) -> Self {
         match val {
             PipelineStatus::Shutdown => "shutdown",
-            PipelineStatus::Deploying => "deploying",
-            PipelineStatus::Running => "running",
+            PipelineStatus::Provisioning => "provisioning",
+            PipelineStatus::Initializing => "initializing",
             PipelineStatus::Paused => "paused",
-            PipelineStatus::Failed => "failed",
+            PipelineStatus::Running => "running",
             PipelineStatus::Unreachable => "unreachable",
             PipelineStatus::ShuttingDown => "shutting_down",
         }
@@ -659,8 +643,15 @@ pub(crate) struct PipelineDescr {
     pub description: String,
     pub config: String,
     pub attached_connectors: Vec<AttachedConnector>,
-    pub status: PipelineStatus,
+}
+
+pub(crate) struct PipelineRuntimeState {
+    pub pipeline_id: PipelineId,
     pub port: u16,
+    pub desired_status: PipelineStatus,
+    pub current_status: PipelineStatus,
+    pub status_since: DateTime<Utc>,
+    pub error: Option<ErrorResponse>,
     pub created: Option<DateTime<Utc>>,
 }
 
@@ -701,7 +692,7 @@ fn convert_bigint_to_time(created_secs: Option<i64>) -> Result<Option<DateTime<U
         let created_naive =
             NaiveDateTime::from_timestamp_millis(created_secs * 1000).ok_or_else(|| {
                 DBError::invalid_data(format!(
-                    "Invalid timestamp in 'pipeline.created' column: {created_secs}"
+                    "Invalid timestamp in 'pipeline_runtime_state.created' column: {created_secs}"
                 ))
             })?;
 
@@ -1248,8 +1239,7 @@ impl Storage for ProjectDB {
             .await?
             // For every pipeline, produce a JSON representation of all connectors
             .query(
-                "SELECT p.id, version, p.name, description, p.config, program_id,
-                        created, port, status,
+                "SELECT p.id, version, p.name, description, p.config, program_id
                 COALESCE(json_agg(json_build_object('name', ac.name,
                                                     'connector_id', connector_id,
                                                     'config', ac.config,
@@ -1268,7 +1258,6 @@ impl Storage for ProjectDB {
         for row in rows {
             let pipeline_id = PipelineId(row.get(0));
             let program_id = row.get::<_, Option<Uuid>>(5).map(ProgramId);
-            let created = convert_bigint_to_time(row.get(6))?;
             let attached_connectors = self.json_to_attached_connectors(row.get(9)).await?;
 
             result.push(PipelineDescr {
@@ -1279,9 +1268,6 @@ impl Storage for ProjectDB {
                 config: row.get(4),
                 program_id,
                 attached_connectors,
-                created,
-                port: row.get::<_, Option<i16>>(7).unwrap_or(0) as u16,
-                status: row.get::<_, String>(8).try_into()?,
             });
         }
 
@@ -1298,8 +1284,7 @@ impl Storage for ProjectDB {
             .get()
             .await?
             .query_opt(
-                "SELECT p.id, version, p.name as cname, description, p.config, program_id,
-                        created, port, status,
+                "SELECT p.id, version, p.name as cname, description, p.config, program_id
                 COALESCE(json_agg(json_build_object('name', ac.name,
                                                     'connector_id', connector_id,
                                                     'config', ac.config,
@@ -1328,8 +1313,7 @@ impl Storage for ProjectDB {
             .get()
             .await?
             .query_opt(
-                "SELECT p.id, version, description, p.config, program_id,
-                        created, port, status,
+                "SELECT p.id, version, description, p.config, program_id
                 COALESCE(json_agg(json_build_object('name', ac.name,
                                                     'connector_id', connector_id,
                                                     'config', ac.config,
@@ -1348,7 +1332,6 @@ impl Storage for ProjectDB {
         if let Some(row) = row {
             let pipeline_id = PipelineId(row.get(0));
             let program_id = row.get::<_, Option<Uuid>>(4).map(ProgramId);
-            let created = convert_bigint_to_time(row.get(5))?;
 
             let descr = PipelineDescr {
                 pipeline_id,
@@ -1358,9 +1341,6 @@ impl Storage for ProjectDB {
                 description: row.get(2),
                 config: row.get(3),
                 attached_connectors: self.json_to_attached_connectors(row.get(8)).await?,
-                created,
-                port: row.get::<_, Option<i16>>(6).unwrap_or(0) as u16,
-                status: row.get::<_, String>(7).try_into()?,
             };
 
             Ok(descr)
@@ -1383,7 +1363,7 @@ impl Storage for ProjectDB {
         let mut client = self.pool.get().await?;
         let txn = client.transaction().await?;
         txn.execute(
-            "INSERT INTO pipeline (id, program_id, version, name, description, config, status, tenant_id) VALUES($1, $2, 1, $3, $4, $5, 'shutdown', $6)",
+            "INSERT INTO pipeline (id, program_id, version, name, description, config, tenant_id) VALUES($1, $2, 1, $3, $4, $5, $6)",
             &[&id, &program_id.map(|id| id.0),
             &pipline_name,
             &pipeline_description,
@@ -1513,30 +1493,6 @@ impl Storage for ProjectDB {
                 pipeline_id,
                 name: name.to_string(),
             }),
-        }
-    }
-
-    // Record port on that the pipeline runner is listening on.
-    async fn set_pipeline_port(
-        &self,
-        tenant_id: TenantId,
-        pipeline_id: PipelineId,
-        port: u16,
-    ) -> Result<(), DBError> {
-        let res = self
-            .pool
-            .get()
-            .await?
-            .execute(
-                "UPDATE pipeline SET port = $1, created = extract(epoch from now()) WHERE id = $2 AND tenant_id = $3",
-                &[&(port as i16), &pipeline_id.0, &tenant_id.0],
-            )
-            .await?;
-
-        if res > 0 {
-            Ok(())
-        } else {
-            Err(DBError::UnknownPipeline { pipeline_id })
         }
     }
 
@@ -1977,7 +1933,6 @@ impl ProjectDB {
     ) -> Result<PipelineDescr, DBError> {
         if let Some(row) = row {
             let program_id = row.get::<_, Option<Uuid>>(5).map(ProgramId);
-            let created = convert_bigint_to_time(row.get(6))?;
 
             let descr = PipelineDescr {
                 pipeline_id,
@@ -1987,9 +1942,6 @@ impl ProjectDB {
                 description: row.get(3),
                 config: row.get(4),
                 attached_connectors: self.json_to_attached_connectors(row.get(9)).await?,
-                created,
-                port: row.get::<_, Option<i16>>(7).unwrap_or(0) as u16,
-                status: row.get::<_, String>(8).try_into()?,
             };
 
             Ok(descr)
@@ -2116,8 +2068,7 @@ impl ProjectDB {
             .get()
             .await?
             .query_opt(
-                "SELECT p.id, version, p.name as cname, description, p.config, program_id,
-                        created, port, status,
+                "SELECT p.id, version, p.name as cname, description, p.config, program_id
                 COALESCE(json_agg(json_build_object('name', ach.name,
                                                     'connector_id', connector_id,
                                                     'config', ach.config,
@@ -2127,7 +2078,7 @@ impl ProjectDB {
                 FROM pipeline_history p
                 LEFT JOIN attached_connector_history ach on p.id = ach.pipeline_id AND ach.revision = $3
                 WHERE p.id = $1 AND p.tenant_id = $2 AND p.revision = $3
-                GROUP BY p.id, p.version, p.name, p.description, p.config, p.program_id, p.created, p.port, p.status
+                GROUP BY p.id, p.version, p.name, p.description, p.config, p.program_id
                 ",
                 &[&pipeline_id.0, &tenant_id.0, &revision.0],
             )

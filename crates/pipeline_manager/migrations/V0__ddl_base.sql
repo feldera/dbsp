@@ -38,15 +38,23 @@ CREATE TABLE IF NOT EXISTS pipeline (
     description varchar NOT NULL,
     config varchar NOT NULL,
     last_revision uuid,
+    FOREIGN KEY (program_id, tenant_id) REFERENCES program(id, tenant_id) ON DELETE CASCADE,
+    CONSTRAINT unique_pipeline_name UNIQUE(tenant_id, name)
+);
+
+CREATE TABLE IF NOT EXISTS pipeline_runtime_state (
+    id uuid PRIMARY KEY,
+    tenant_id uuid NOT NULL,
     -- TODO: add 'host' field when we support remote pipelines.
     port smallint,
     desired_status varchar NOT NULL,
     current_status varchar NOT NULL,
+    status_since bigint NOT NULL,
     error varchar,
-    created bigint,
-    FOREIGN KEY (program_id, tenant_id) REFERENCES program(id, tenant_id) ON DELETE CASCADE,
-    CONSTRAINT unique_pipeline_name UNIQUE(tenant_id, name)
+    created,
+    FOREIGN KEY id REFERENCES pipeline(id) ON DELETE CASCADE,
 );
+
 CREATE TABLE IF NOT EXISTS pipeline_history (
     revision uuid,
     LIKE pipeline,
