@@ -51,7 +51,7 @@ CREATE TABLE IF NOT EXISTS pipeline_runtime_state (
     current_status varchar NOT NULL,
     status_since bigint NOT NULL,
     error varchar,
-    created,
+    created bigint NOT NULL,
     FOREIGN KEY id REFERENCES pipeline(id) ON DELETE CASCADE,
 );
 
