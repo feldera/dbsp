@@ -917,11 +917,10 @@ impl CodegenCtx<'_> {
                 let print = self.imports.get("print_str", self.module, builder.func);
 
                 // Import the message to be printed on overflow
-                let (message_ptr, message_len) = if let Some(message) = message {
-                    self.import_string(message, builder)
-                } else {
-                    self.import_string("overflow occurred in multiplication", builder)
-                };
+                let (message_ptr, message_len) = self.import_string(
+                    message.unwrap_or("overflow occurred in multiplication"),
+                    builder,
+                );
 
                 // Print out the message
                 // TODO: It'd be nice to print out the operands in the message along with source
