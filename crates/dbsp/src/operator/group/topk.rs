@@ -32,34 +32,34 @@ where
     }
 }
 
-struct TopK<I, R> {
+struct TopK<I, R, const ASCENDING: bool> {
     k: usize,
     name: String,
-    asc: bool,
+    // asc: bool,
     _phantom: PhantomData<(I, R)>,
 }
 
-impl<I, R> TopK<I, R> {
+impl<I, R> TopK<I, R, true> {
     fn asc(k: usize) -> Self {
         Self {
             k,
             name: format!("top-{k}-asc"),
-            asc: true,
-            _phantom: PhantomData,
-        }
-    }
-
-    fn desc(k: usize) -> Self {
-        Self {
-            k,
-            name: format!("top-{k}-desc"),
-            asc: false,
             _phantom: PhantomData,
         }
     }
 }
 
-impl<I, R> NonIncrementalGroupTransformer<I, I, R> for TopK<I, R>
+impl<I, R> TopK<I, R, false> {
+    fn desc(k: usize) -> Self {
+        Self {
+            k,
+            name: format!("top-{k}-desc"),
+            _phantom: PhantomData,
+        }
+    }
+}
+
+impl<I, R, const ASCENDING: bool> NonIncrementalGroupTransformer<I, I, R> for TopK<I, R, ASCENDING>
 where
     I: DBData,
     R: DBWeight,
@@ -69,7 +69,7 @@ where
     }
 
     fn monotonicity(&self) -> Monotonicity {
-        if self.asc {
+        if ASCENDING {
             Monotonicity::Ascending
         } else {
             Monotonicity::Descending
@@ -83,7 +83,7 @@ where
     {
         let mut count = 0usize;
 
-        if self.asc {
+        if ASCENDING {
             while cursor.key_valid() && count < self.k {
                 let w = cursor.weight();
                 if !w.is_zero() {

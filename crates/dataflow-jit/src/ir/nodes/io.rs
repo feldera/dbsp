@@ -43,7 +43,11 @@ impl DataflowNode for Export {
         map(&mut self.input);
     }
 
-    fn output_stream(&self, _inputs: &[StreamLayout]) -> Option<StreamLayout> {
+    fn output_stream(
+        &self,
+        _inputs: &[StreamLayout],
+        _layout_cache: &RowLayoutCache,
+    ) -> Option<StreamLayout> {
         Some(self.layout)
     }
 
@@ -109,7 +113,11 @@ impl DataflowNode for ExportedNode {
         map(&mut self.input);
     }
 
-    fn output_stream(&self, _inputs: &[StreamLayout]) -> Option<StreamLayout> {
+    fn output_stream(
+        &self,
+        _inputs: &[StreamLayout],
+        _layout_cache: &RowLayoutCache,
+    ) -> Option<StreamLayout> {
         Some(self.layout)
     }
 
@@ -163,7 +171,11 @@ impl DataflowNode for Source {
     {
     }
 
-    fn output_stream(&self, _inputs: &[StreamLayout]) -> Option<StreamLayout> {
+    fn output_stream(
+        &self,
+        _inputs: &[StreamLayout],
+        _layout_cache: &RowLayoutCache,
+    ) -> Option<StreamLayout> {
         Some(StreamLayout::Set(self.layout))
     }
 
@@ -238,7 +250,11 @@ impl DataflowNode for SourceMap {
     {
     }
 
-    fn output_stream(&self, _inputs: &[StreamLayout]) -> Option<StreamLayout> {
+    fn output_stream(
+        &self,
+        _inputs: &[StreamLayout],
+        _layout_cache: &RowLayoutCache,
+    ) -> Option<StreamLayout> {
         Some(self.output_layout())
     }
 
@@ -311,7 +327,11 @@ impl DataflowNode for Sink {
         map(&mut self.input);
     }
 
-    fn output_stream(&self, _inputs: &[StreamLayout]) -> Option<StreamLayout> {
+    fn output_stream(
+        &self,
+        _inputs: &[StreamLayout],
+        _layout_cache: &RowLayoutCache,
+    ) -> Option<StreamLayout> {
         None
     }
 

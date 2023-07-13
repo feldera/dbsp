@@ -98,7 +98,11 @@ impl DataflowNode for FlatMap {
         map(&mut self.input);
     }
 
-    fn output_stream(&self, _inputs: &[StreamLayout]) -> Option<StreamLayout> {
+    fn output_stream(
+        &self,
+        _inputs: &[StreamLayout],
+        _layout_cache: &RowLayoutCache,
+    ) -> Option<StreamLayout> {
         Some(self.output_layout)
     }
 

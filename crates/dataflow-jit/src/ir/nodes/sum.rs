@@ -47,7 +47,11 @@ impl DataflowNode for Sum {
         self.inputs.iter_mut().for_each(map);
     }
 
-    fn output_stream(&self, _inputs: &[StreamLayout]) -> Option<StreamLayout> {
+    fn output_stream(
+        &self,
+        _inputs: &[StreamLayout],
+        _layout_cache: &RowLayoutCache,
+    ) -> Option<StreamLayout> {
         Some(self.layout)
     }
 
@@ -134,7 +138,11 @@ impl DataflowNode for Minus {
         map(&mut self.rhs);
     }
 
-    fn output_stream(&self, inputs: &[StreamLayout]) -> Option<StreamLayout> {
+    fn output_stream(
+        &self,
+        inputs: &[StreamLayout],
+        _layout_cache: &RowLayoutCache,
+    ) -> Option<StreamLayout> {
         Some(inputs[0])
     }
 
