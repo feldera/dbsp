@@ -16,6 +16,7 @@ use storage::Storage;
 use tokio_postgres::{error::Error as PgError, NoTls, Row};
 use utoipa::ToSchema;
 use uuid::Uuid;
+use dbsp_adapters::ErrorResponse;
 
 #[cfg(test)]
 use proptest::collection::vec;
@@ -650,6 +651,7 @@ pub(crate) struct PipelineDescr {
     pub attached_connectors: Vec<AttachedConnector>,
 }
 
+#[derive(Serialize, ToSchema, Eq, PartialEq, Debug, Clone)]
 pub(crate) struct PipelineRuntimeState {
     pub port: u16,
     pub desired_status: PipelineStatus,
@@ -660,24 +662,25 @@ pub(crate) struct PipelineRuntimeState {
 }
 
 impl PipelineRuntimeState {
-    fn set_current_status<E>(&mut self, new_current_status: PipelineStatus, error: Option<E>)
+    pub(crate) fn set_current_status<E>(&mut self, new_current_status: PipelineStatus, error: Option<E>)
     where
-        ErrorResponse: From<E>,
+        ErrorResponse: for<'a> From<&'a E>,
     {
         self.current_status = new_current_status;
         self.error = error.map(ErrorResponse::from);
         self.status_since = Utc::now();
     }
 
-    fn set_port(&mut self, port: u16) {
+    pub(crate) fn set_port(&mut self, port: u16) {
         self.port = port;
     }
 
-    fn set_created(&mut self) {
+    pub(crate) fn set_created(&mut self) {
         self.created = Utc::now();
     }
 }
 
+#[derive(Serialize, ToSchema, Eq, PartialEq, Debug, Clone)]
 pub(crate) struct Pipeline {
     pub descriptor: PipelineDescr,
     pub state: PipelineRuntimeState,
@@ -715,19 +718,15 @@ pub(crate) enum ApiPermission {
     Write,
 }
 
-fn convert_bigint_to_time(created_secs: Option<i64>) -> Result<Option<DateTime<Utc>>, DBError> {
-    if let Some(created_secs) = created_secs {
-        let created_naive =
-            NaiveDateTime::from_timestamp_millis(created_secs * 1000).ok_or_else(|| {
-                DBError::invalid_data(format!(
-                    "Invalid timestamp in 'pipeline_runtime_state.created' column: {created_secs}"
-                ))
-            })?;
+fn convert_bigint_to_time(created_secs: i64) -> Result<DateTime<Utc>, DBError> {
+    let created_naive =
+        NaiveDateTime::from_timestamp_millis(created_secs * 1000).ok_or_else(|| {
+            DBError::invalid_data(format!(
+                "Invalid timestamp in 'pipeline_runtime_state.created' column: {created_secs}"
+            ))
+        })?;
 
-        Ok(Some(DateTime::<Utc>::from_utc(created_naive, Utc)))
-    } else {
-        Ok(None)
-    }
+    Ok(DateTime::<Utc>::from_utc(created_naive, Utc))
 }
 
 // The goal for these methods is to avoid multiple DB interactions as much as
@@ -1285,8 +1284,7 @@ impl Storage for ProjectDB {
             .await?;
         let mut result = Vec::with_capacity(rows.len());
         for row in rows {
-            let pipeline_id = PipelineId(row.get(0));
-            result.push(self.row_to_pipeline(pipeline_id, &Some(row)?));
+            result.push(self.row_to_pipeline(&row).await?);
         }
 
         Ok(result)
@@ -1318,9 +1316,10 @@ impl Storage for ProjectDB {
                 ",
                 &[&pipeline_id.0, &tenant_id.0],
             )
-            .await?;
+            .await?
+            .ok_or_else(|| DBError::UnknownPipeline {pipeline_id})?;
 
-        self.row_to_pipeline(pipeline_id, row).await
+        self.row_to_pipeline(&row).await
     }
 
     async fn get_pipeline_descr_by_id(
@@ -1347,16 +1346,17 @@ impl Storage for ProjectDB {
                 ",
                 &[&pipeline_id.0, &tenant_id.0],
             )
-            .await?;
+            .await?
+            .ok_or_else(|| DBError::UnknownPipeline {pipeline_id})?;
 
-        self.row_to_pipeline_descr(pipeline_id, row).await
+        self.row_to_pipeline_descr(&row).await
     }
 
     async fn get_pipeline_runtime_state(
         &self,
         tenant_id: TenantId,
         pipeline_id: PipelineId,
-    ) -> Result<Pipeline, DBError> {
+    ) -> Result<PipelineRuntimeState, DBError> {
         let row = self
             .pool
             .get()
@@ -1369,7 +1369,7 @@ impl Storage for ProjectDB {
             )
             .await?;
 
-        self.row_to_pipeline_runtime_state(pipeline_id, row).await
+        self.row_to_pipeline_runtime_state(pipeline_id, &row).await
     }
 
     async fn get_pipeline_descr_by_name(
@@ -1382,7 +1382,7 @@ impl Storage for ProjectDB {
             .get()
             .await?
             .query_opt(
-                "SELECT p.id, version, description, p.config, program_id,
+                "SELECT p.id, version, p.name as cname, description, p.config, program_id,
                 COALESCE(json_agg(json_build_object('name', ac.name,
                                                     'connector_id', connector_id,
                                                     'config', ac.config,
@@ -1396,26 +1396,42 @@ impl Storage for ProjectDB {
                 ",
                 &[&name, &tenant_id.0],
             )
-            .await?;
+            .await?
+            .ok_or_else(|| DBError::UnknownName{ name })?;
 
-        if let Some(row) = row {
-            let pipeline_id = PipelineId(row.get(0));
-            let program_id = row.get::<_, Option<Uuid>>(4).map(ProgramId);
+        self.row_to_pipeline_descr(&row).await
+    }
 
-            let descr = PipelineDescr {
-                pipeline_id,
-                program_id,
-                version: Version(row.get(1)),
-                name,
-                description: row.get(2),
-                config: row.get(3),
-                attached_connectors: self.json_to_attached_connectors(row.get(5)).await?,
-            };
+    async fn get_pipeline_by_name(
+        &self,
+        tenant_id: TenantId,
+        name: String,
+    ) -> Result<Pipeline, DBError> {
+        let row = self
+            .pool
+            .get()
+            .await?
+            .query_opt(
+                "SELECT p.id, version, p.name as cname, description, p.config, program_id,
+                COALESCE(json_agg(json_build_object('name', ac.name,
+                                                    'connector_id', connector_id,
+                                                    'config', ac.config,
+                                                    'is_input', is_input))
+                                FILTER (WHERE ac.name IS NOT NULL),
+                        '[]'),
+                rt.port, rt.desired_status, rt.current_status, rt.status_since, rt.error, rt.created,
+                FROM pipeline p
+                INNER JOIN pipeline_runtime_state rt on p.id = rt.id
+                LEFT JOIN attached_connector ac on p.id = ac.pipeline_id
+                WHERE p.name = $1 AND p.tenant_id = $2
+                GROUP BY p.id
+                ",
+                &[&name, &tenant_id.0],
+            )
+            .await?
+            .ok_or_else(|| DBError::UnknownName {name})?;
 
-            Ok(descr)
-        } else {
-            Err(DBError::UnknownName { name })
-        }
+        self.row_to_pipeline(&row).await
     }
 
     // XXX: Multiple statements
@@ -1547,11 +1563,11 @@ impl Storage for ProjectDB {
                 WHERE id = $1
                 ",
                 &[&pipeline_id.0,
-                  &(port as i16),
+                  &(state.port as i16),
                   &current_status,
                   &state.status_since.timestamp(),
                   &state.created.timestamp(),
-                  &state.error.map(serde_json::to_string)],
+                  &state.error.map(|e| serde_json::to_string(&e).unwrap())],
             )
             .await?;
 
@@ -1562,7 +1578,7 @@ impl Storage for ProjectDB {
         &self,
         tenant_id: TenantId,
         pipeline_id: PipelineId,
-        desired_status: &PipelineStatus,
+        desired_status: PipelineStatus,
     ) -> Result<(), DBError> {
         let desired_status: &'static str = desired_status.into();
 
@@ -2084,42 +2100,43 @@ impl ProjectDB {
         return Ok(Self { pool });
     }
 
+    fn deserialize_error_response(pipeline_id: PipelineId, error_str: &str) -> Result<ErrorResponse, DBError> {
+        serde_json::from_str::<ErrorResponse>(error_str).map_err(|e| {
+            DBError::invalid_data(format!("Unexpected pipeline error format: {error_str}"))
+        })
+    }
+    
     async fn row_to_pipeline_descr(
         &self,
-        pipeline_id: PipelineId,
-        row: &Option<Row>,
+        row: &Row,
     ) -> Result<PipelineDescr, DBError> {
-        if let Some(row) = row {
-            let program_id = row.get::<_, Option<Uuid>>(5).map(ProgramId);
+        let pipeline_id = PipelineId(row.get(0));
+        let program_id = row.get::<_, Option<Uuid>>(5).map(ProgramId);
 
-            let descr = PipelineDescr {
-                pipeline_id,
-                program_id,
-                version: Version(row.get(1)),
-                name: row.get(2),
-                description: row.get(3),
-                config: row.get(4),
-                attached_connectors: self.json_to_attached_connectors(row.get(6)).await?,
-            };
-
-            Ok(descr)
-        } else {
-            Err(DBError::UnknownPipeline { pipeline_id })
-        }
+        Ok(PipelineDescr {
+            pipeline_id,
+            program_id,
+            version: Version(row.get(1)),
+            name: row.get(2),
+            description: row.get(3),
+            config: row.get(4),
+            attached_connectors: self.json_to_attached_connectors(row.get(6)).await?,
+        })
     }
 
     async fn row_to_pipeline_runtime_state(
         &self,
         pipeline_id: PipelineId,
         row: &Option<Row>,
-    ) -> Result<PipelineDescr, DBError> {
+    ) -> Result<PipelineRuntimeState, DBError> {
         if let Some(row) = row {
             Ok(PipelineRuntimeState {
                 port: row.get::<_, Option<i16>>(0).unwrap_or(0) as u16,
                 desired_status: row.get::<_, String>(1).try_into()?,
                 current_status: row.get::<_, String>(2).try_into()?,
                 status_since: convert_bigint_to_time(row.get(3))?,
-                error: row.get::<_, Option<String>>(4).map(ErrorResponse),
+                error: row.get::<_, Option<String>>(4)
+                    .map(|s| Self::deserialize_error_response(pipeline_id, &s)).transpose()?,
                 created: convert_bigint_to_time(row.get(5))?,
             })
         } else {
@@ -2129,38 +2146,35 @@ impl ProjectDB {
 
     async fn row_to_pipeline(
         &self,
-        pipeline_id: PipelineId,
-        row: &Option<Row>,
-    ) -> Result<PipelineDescr, DBError> {
-        if let Some(row) = row {
-            let program_id = row.get::<_, Option<Uuid>>(5).map(ProgramId);
+        row: &Row,
+    ) -> Result<Pipeline, DBError> {
+        let pipeline_id = PipelineId(row.get(0));
+        let program_id = row.get::<_, Option<Uuid>>(5).map(ProgramId);
 
-            let descriptor = PipelineDescr {
-                pipeline_id,
-                program_id,
-                version: Version(row.get(1)),
-                name: row.get(2),
-                description: row.get(3),
-                config: row.get(4),
-                attached_connectors: self.json_to_attached_connectors(row.get(6)).await?,
-            };
+        let descriptor = PipelineDescr {
+            pipeline_id,
+            program_id,
+            version: Version(row.get(1)),
+            name: row.get(2),
+            description: row.get(3),
+            config: row.get(4),
+            attached_connectors: self.json_to_attached_connectors(row.get(6)).await?,
+        };
 
-            let state = PipelineRuntimeState {
-                port: row.get::<_, Option<i16>>(7).unwrap_or(0) as u16,
-                desired_status: row.get::<_, String>(8).try_into()?,
-                current_status: row.get::<_, String>(9).try_into()?,
-                status_since: convert_bigint_to_time(row.get(10))?,
-                error: row.get::<_, Option<String>>(11).map(ErrorResponse),
-                created: convert_bigint_to_time(row.get(12))?,
-            };
+        let state = PipelineRuntimeState {
+            port: row.get::<_, Option<i16>>(7).unwrap_or(0) as u16,
+            desired_status: row.get::<_, String>(8).try_into()?,
+            current_status: row.get::<_, String>(9).try_into()?,
+            status_since: convert_bigint_to_time(row.get(10))?,
+            error: row.get::<_, Option<String>>(11)
+                .map(|s| Self::deserialize_error_response(pipeline_id, &s)).transpose()?,
+            created: convert_bigint_to_time(row.get(12))?,
+        };
 
-            Ok(Pipeline {
-                descriptor,
-                state,
-            })
-        } else {
-            Err(DBError::UnknownPipeline { pipeline_id })
-        }
+        Ok(Pipeline {
+            descriptor,
+            state,
+        })
     }
 
     /// We check if a program is 'in use' by checking if it is referenced by a
@@ -2201,7 +2215,7 @@ impl ProjectDB {
         tenant_id: TenantId,
         pipeline_id: PipelineId,
     ) -> Result<(PipelineDescr, ProgramDescr, Vec<ConnectorDescr>), DBError> {
-        let pipeline = self.get_pipeline_by_id(tenant_id, pipeline_id).await?;
+        let pipeline = self.get_pipeline_descr_by_id(tenant_id, pipeline_id).await?;
         let program_id = pipeline.program_id.ok_or(DBError::ProgramNotSet)?;
         let program = self.get_program_by_id(tenant_id, program_id).await?;
         let connectors = self
@@ -2217,7 +2231,7 @@ impl ProjectDB {
         tenant_id: TenantId,
         pipeline_id: PipelineId,
     ) -> Result<String, DBError> {
-        let pipeline = self.get_pipeline_by_id(tenant_id, pipeline_id).await?;
+        let pipeline = self.get_pipeline_descr_by_id(tenant_id, pipeline_id).await?;
         let connectors: Vec<ConnectorDescr> = self
             .get_connectors_for_pipeline_id(tenant_id, pipeline_id)
             .await?;
@@ -2295,9 +2309,10 @@ impl ProjectDB {
                 ",
                 &[&pipeline_id.0, &tenant_id.0, &revision.0],
             )
-            .await?;
+            .await?
+            .ok_or_else(|| DBError::UnknownPipeline {pipeline_id})?;
 
-        self.row_to_pipeline_descr(pipeline_id, row).await
+        self.row_to_pipeline_descr(&row).await
     }
 
     async fn get_committed_connectors_by_id(

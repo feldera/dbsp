@@ -1,7 +1,7 @@
 use super::{
-    ApiPermission, AttachedConnector, ConnectorDescr, ConnectorId, DBError, PipelineDescr,
-    PipelineId, PipelineRevision, PipelineStatus, ProgramDescr, ProgramId, ProgramSchema, Revision,
-    Version,
+    ApiPermission, AttachedConnector, ConnectorDescr, ConnectorId, DBError, Pipeline, PipelineDescr,
+    PipelineId, PipelineRevision, PipelineRuntimeState, PipelineStatus, ProgramDescr, ProgramId,
+    ProgramSchema, Revision, Version,
 };
 use crate::{auth::TenantId, ProgramStatus};
 use async_trait::async_trait;
@@ -278,21 +278,6 @@ pub(crate) trait Storage {
         name: &str,
     ) -> Result<bool, DBError>;
 
-    async fn set_pipeline_deployed(
-        &self,
-        tenant_id: TenantId,
-        pipeline_id: PipelineId,
-        port: u16,
-    ) -> Result<(), DBError>;
-
-    /// Set `shutdown` flag to `true`.
-    async fn set_pipeline_status(
-        &self,
-        tenant_id: TenantId,
-        pipeline_id: PipelineId,
-        status: PipelineStatus,
-    ) -> Result<bool, DBError>;
-
     /// Delete `pipeline` from the DB.
     async fn delete_pipeline(
         &self,
@@ -301,21 +286,51 @@ pub(crate) trait Storage {
     ) -> Result<bool, DBError>;
 
     /// Retrieve pipeline for a given id.
-    async fn get_pipeline_by_id(
+    async fn get_pipeline_descr_by_id(
         &self,
         tenant_id: TenantId,
         pipeline_id: PipelineId,
     ) -> Result<PipelineDescr, DBError>;
 
+    async fn get_pipeline_by_id(
+        &self,
+        tenant_id: TenantId,
+        pipeline_id: PipelineId,
+    ) -> Result<Pipeline, DBError>;
+
     /// Retrieve pipeline for a given name.
-    async fn get_pipeline_by_name(
+    async fn get_pipeline_descr_by_name(
         &self,
         tenant_id: TenantId,
         name: String,
     ) -> Result<PipelineDescr, DBError>;
 
-    /// List pipelines associated with `program_id`.
-    async fn list_pipelines(&self, tenant_id: TenantId) -> Result<Vec<PipelineDescr>, DBError>;
+    async fn get_pipeline_by_name(
+        &self,
+        tenant_id: TenantId,
+        name: String,
+    ) -> Result<Pipeline, DBError>;
+
+    async fn get_pipeline_runtime_state(
+        &self,
+        tenant_id: TenantId,
+        pipeline_id: PipelineId,
+    ) -> Result<PipelineRuntimeState, DBError>;
+
+    async fn update_pipeline_runtime_state(
+        &self,
+        pipeline_id: PipelineId,
+        state: &PipelineRuntimeState,
+    ) -> Result<(), DBError>;
+
+    async fn set_pipeline_desired_status(
+        &self,
+        tenant_id: TenantId,
+        pipeline_id: PipelineId,
+        desired_status: PipelineStatus,
+    ) -> Result<(), DBError>;
+    
+    async fn list_pipelines(&self, tenant_id: TenantId) -> Result<Vec<Pipeline>, DBError>;
 
     /// Create a new connector.
     async fn new_connector(

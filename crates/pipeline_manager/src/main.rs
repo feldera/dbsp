@@ -148,6 +148,7 @@ observed by the user is outdated, so the request is rejected."
         db::Relation,
         db::Field,
         db::ConnectorDescr,
+        db::Pipeline,
         db::PipelineDescr,
         db::PipelineRevision,
         db::Revision,
@@ -266,7 +267,7 @@ impl ServerState {
         db: Arc<Mutex<ProjectDB>>,
         compiler: Option<Compiler>,
     ) -> AnyResult<Self> {
-        let runner = Runner::Local(LocalRunner::new(db.clone(), &config)?);
+        let runner = Runner::local(db.clone(), &config);
 
         Ok(Self {
             db,
@@ -431,9 +432,6 @@ fn example_pipeline_toml() -> String {
         config: "workers: 8\n".into(),
         attached_connectors: vec![input, output],
         version: Version(1),
-        port: 0,
-        created: None,
-        status: db::PipelineStatus::Running,
     };
 
     let connectors = vec![input_connector, output_connector];
@@ -1136,7 +1134,7 @@ async fn update_pipeline(
 /// List pipelines.
 #[utoipa::path(
     responses(
-        (status = OK, description = "Pipeline list retrieved successfully.", body = [PipelineDescr])
+        (status = OK, description = "Pipeline list retrieved successfully.", body = [Pipeline])
     ),
     tag = "Pipeline"
 )]
@@ -1236,7 +1234,7 @@ async fn pipeline_stats(
     responses(
         (status = OK, description = "Pipeline descriptor retrieved successfully.",content(
             ("text/plain" = String, example = json!(example_pipeline_toml())),
-            ("application/json" = PipelineDescr),
+            ("application/json" = Pipeline),
         )),
         (status = BAD_REQUEST
             , description = "Pipeline not specified. Use ?id or ?name query strings in the URL."
@@ -1278,7 +1276,7 @@ async fn pipeline_status(
                 .await?
         } else if let Some(name) = req.name.clone() {
             let db: tokio::sync::MutexGuard<'_, ProjectDB> = state.db.lock().await;
-            let pipeline = db.get_pipeline_by_name(*tenant_id, name).await?;
+            let pipeline = db.get_pipeline_descr_by_name(*tenant_id, name).await?;
             db.pipeline_to_toml(*tenant_id, pipeline.pipeline_id)
                 .await?
         } else {
@@ -1290,7 +1288,7 @@ async fn pipeline_status(
             .insert_header(CacheControl(vec![CacheDirective::NoCache]))
             .body(toml))
     } else {
-        let descr: db::PipelineDescr = if let Some(id) = req.id {
+        let pipeline: db::Pipeline = if let Some(id) = req.id {
             state
                 .db
                 .lock()
@@ -1310,7 +1308,7 @@ async fn pipeline_status(
 
         Ok(HttpResponse::Ok()
             .insert_header(CacheControl(vec![CacheDirective::NoCache]))
-            .json(&descr))
+            .json(&pipeline))
     }
 }
 
@@ -1386,10 +1384,8 @@ async fn pipeline_validate(
 /// not deleted from the database, but its `status` is set to `shutdown`.
 #[utoipa::path(
     responses(
-        (status = OK
-            , description = "Performed a Pipeline action."
-            , content_type = "application/json"
-            , body = String),
+        (status = ACCEPTED
+            , description = "Performed a Pipeline action."),
         (status = BAD_REQUEST
             , description = "Invalid pipeline action specified."
             , body = ErrorResponse
@@ -1443,19 +1439,21 @@ async fn pipeline_action(
     let action = parse_pipeline_action(&req)?;
 
     match action {
-        "deploy" => state.runner.deploy_pipeline(*tenant_id, pipeline_id).await,
-        "start" => state.runner.start_pipeline(*tenant_id, pipeline_id).await,
-        "pause" => state.runner.pause_pipeline(*tenant_id, pipeline_id).await,
+        "deploy" => state.runner.deploy_pipeline(*tenant_id, pipeline_id).await?,
+        "start" => state.runner.start_pipeline(*tenant_id, pipeline_id).await?,
+        "pause" => state.runner.pause_pipeline(*tenant_id, pipeline_id).await?,
         "shutdown" => {
             state
                 .runner
                 .shutdown_pipeline(*tenant_id, pipeline_id)
-                .await
+                .await?
         }
         _ => Err(ManagerError::InvalidPipelineAction {
             action: action.to_string(),
-        }),
+        })?,
     }
+
+    Ok(HttpResponse::Accepted().finish())
 }
 
 /// Terminate and delete a pipeline.
@@ -1464,11 +1462,8 @@ async fn pipeline_action(
 /// the database.
 #[utoipa::path(
     responses(
-        (status = OK
-            , description = "Pipeline successfully deleted."
-            , content_type = "application/json"
-            , body = String
-            , example = json!("Pipeline successfully deleted")),
+        (status = ACCEPTED
+            , description = "Pipeline successfully deleted."),
         (status = BAD_REQUEST
             , description = "Specified pipeline id is not a valid uuid."
             , body = ErrorResponse
@@ -1496,7 +1491,9 @@ async fn pipeline_delete(
     state
         .runner
         .delete_pipeline(*tenant_id, &db, pipeline_id)
-        .await
+        .await?;
+
+    Ok(HttpResponse::Accepted().finish())
 }
 
 /// Enumerate the connector database.

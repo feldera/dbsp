@@ -56,7 +56,7 @@ use actix_web::{
 use anyhow::Error as AnyError;
 use dbsp::{operator::sample::MAX_QUANTILES, DetailedError};
 use log::{error, warn};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use serde_json::{json, Value as JsonValue};
 use std::{
     borrow::Cow,
@@ -79,6 +79,15 @@ pub struct ErrorResponse {
     /// The contents of this field is determined by `error_code`.
     #[schema(value_type=Object)]
     details: JsonValue,
+}
+
+impl<E> From<&E> for ErrorResponse
+where
+    E: DetailedError
+{
+    fn from(error: &E) -> ErrorResponse {
+        Self::from_error(error)
+    }
 }
 
 impl ErrorResponse {
