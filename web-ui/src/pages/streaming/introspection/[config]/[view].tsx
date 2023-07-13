@@ -21,6 +21,9 @@ import {
   SelectChangeEvent
 } from '@mui/material'
 import { Icon } from '@iconify/react'
+import { Controller, useForm } from 'react-hook-form'
+import { ErrorBoundary } from 'react-error-boundary'
+import { ErrorOverlay } from 'src/components/table/ErrorOverlay'
 
 const TitleBreadCrumb = (props: { pipeline: PipelineDescr; relation: string }) => {
   const pipeline_id = props.pipeline.pipeline_id
@@ -40,31 +43,58 @@ const TitleBreadCrumb = (props: { pipeline: PipelineDescr; relation: string }) =
     }
   }, [pipelineRevisionQuery.isLoading, pipelineRevisionQuery.isError, pipelineRevisionQuery.data])
 
-  const onChange = (e: SelectChangeEvent<string>) => {
-    e.preventDefault()
+  const switchRelation = (e: SelectChangeEvent<string>) => {
     router.push(`/streaming/introspection/${pipeline_id}/${e.target.value}`)
   }
 
-  return typeof view === 'string' ? (
+  interface IFormInputs {
+    relation: string
+  }
+
+  const { control } = useForm<IFormInputs>({
+    defaultValues: {
+      relation: view as string
+    }
+  })
+
+  return typeof view === 'string' && tables.length > 0 && views.length > 0 ? (
     <Breadcrumbs separator={<Icon icon='bx:chevron-right' fontSize={20} />} aria-label='breadcrumb'>
       <Link href='/streaming/management/'>{props.pipeline.name}</Link>
-      <FormControl>
-        <InputLabel htmlFor='relation-select'>Relation</InputLabel>
-        <Select label='Select Relation' defaultValue={view} id='relation-select' onChange={onChange}>
-          <ListSubheader>Tables</ListSubheader>
-          {tables.map(item => (
-            <MenuItem key={item} value={item}>
-              {item}
-            </MenuItem>
-          ))}
-          <ListSubheader>Views</ListSubheader>
-          {views.map(item => (
-            <MenuItem key={item} value={item}>
-              {item}
-            </MenuItem>
-          ))}
-        </Select>
-      </FormControl>
+      <Controller
+        name='relation'
+        control={control}
+        defaultValue={view}
+        render={({ field: { onChange, value } }) => {
+          return (
+            <FormControl>
+              <InputLabel htmlFor='relation-select'>Relation</InputLabel>
+              <Select
+                label='Select Relation'
+                id='relation-select'
+                onChange={e => {
+                  e.preventDefault()
+                  switchRelation(e)
+                  onChange(e)
+                }}
+                value={value}
+              >
+                <ListSubheader>Tables</ListSubheader>
+                {tables.map(item => (
+                  <MenuItem key={item} value={item}>
+                    {item}
+                  </MenuItem>
+                ))}
+                <ListSubheader>Views</ListSubheader>
+                {views.map(item => (
+                  <MenuItem key={item} value={item}>
+                    {item}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+          )
+        }}
+      />
     </Breadcrumbs>
   ) : (
     <></>
@@ -73,20 +103,23 @@ const TitleBreadCrumb = (props: { pipeline: PipelineDescr; relation: string }) =
 
 const IntrospectInputOutput = () => {
   const [pipelineId, setPipelineId] = useState<PipelineId | undefined>(undefined)
-  const [tableOrView, setTableOrView] = useState<string | undefined>(undefined)
+  const [relation, setRelation] = useState<string | undefined>(undefined)
   const router = useRouter()
-  const { config, view } = router.query
 
   useEffect(() => {
+    if (!router.isReady) {
+      return
+    }
+    const { config, view } = router.query
     if (typeof config === 'string') {
       setPipelineId(config)
     }
     if (typeof view === 'string') {
-      setTableOrView(view)
+      setRelation(view)
+      console.log('setRelation', view)
     }
-  }, [pipelineId, setPipelineId, config, view, setTableOrView])
+  }, [pipelineId, setPipelineId, setRelation, router])
   const [pipelineDescr, setPipelineDescr] = useState<PipelineDescr | undefined>(undefined)
-
   const configQuery = useQuery<PipelineDescr>(['pipelineStatus', { pipeline_id: pipelineId }], {
     enabled: pipelineId !== undefined
   })
@@ -96,19 +129,26 @@ const IntrospectInputOutput = () => {
     }
   }, [configQuery.isLoading, configQuery.isError, configQuery.data, setPipelineDescr])
 
+  const logError = (error: Error, info: { componentStack: string }) => {
+    console.error('ErrorBoundary: ', error, info)
+  }
+
   return (
     !configQuery.isLoading &&
     !configQuery.isError &&
     pipelineDescr &&
-    tableOrView && (
+    relation &&
+    pipelineId !== undefined && (
       <Grid container spacing={6} className='match-height'>
         <PageHeader
-          title={<TitleBreadCrumb pipeline={pipelineDescr} relation={tableOrView} />}
+          title={<TitleBreadCrumb pipeline={pipelineDescr} relation={relation} />}
           subtitle={<Typography variant='body2'>Introspection</Typography>}
         />
 
         <Grid item xs={12}>
-          <IntrospectionTable pipelineDescr={pipelineDescr} name={tableOrView} />
+          <ErrorBoundary FallbackComponent={ErrorOverlay} onError={logError}>
+            <IntrospectionTable pipelineDescr={pipelineDescr} name={relation} />
+          </ErrorBoundary>
         </Grid>
       </Grid>
     )

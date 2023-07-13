@@ -1862,7 +1862,7 @@ async fn http_input(
     ),
     tag = "Pipeline"
 )]
-#[get("/v0/pipelines/{pipeline_id}/egress/{table_name}")]
+#[post("/v0/pipelines/{pipeline_id}/egress/{table_name}")]
 async fn http_output(
     state: WebData<ServerState>,
     tenant_id: ReqData<TenantId>,

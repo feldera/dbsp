@@ -13,7 +13,7 @@ import {
   DataGridPro,
   DataGridProProps,
   GRID_DETAIL_PANEL_TOGGLE_COL_DEF,
-  GridColumns,
+  GridColDef,
   GridRenderCellParams
 } from '@mui/x-data-grid-pro'
 import CustomChip from 'src/@core/components/mui/chip'
@@ -414,7 +414,7 @@ export default function PipelineTable() {
     )
   }
 
-  const columns: GridColumns = [
+  const columns: GridColDef[] = [
     {
       ...GRID_DETAIL_PANEL_TOGGLE_COL_DEF,
       renderCell: params => <CustomDetailPanelToggle id={params.id} value={params.value} row={params.row} />
@@ -581,7 +581,6 @@ export default function PipelineTable() {
             onChange: (event: React.ChangeEvent<HTMLInputElement>) => handleSearch(event.target.value)
           },
           errorOverlay: {
-            isError: isError,
             error: error
           }
         }}

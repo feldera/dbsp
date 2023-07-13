@@ -588,7 +588,7 @@ struct EgressArgs {
     quantiles: u32,
 }
 
-#[get("/egress/{table_name}")]
+#[post("/egress/{table_name}")]
 async fn output_endpoint(
     state: WebData<ServerState>,
     req: HttpRequest,
@@ -940,9 +940,9 @@ outputs:
         }
 
         println!("Connecting to HTTP output endpoint");
-        let mut resp1 = server.get("/egress/test_output1").send().await.unwrap();
+        let mut resp1 = server.post("/egress/test_output1").send().await.unwrap();
 
-        let mut resp2 = server.get("/egress/test_output1").send().await.unwrap();
+        let mut resp2 = server.post("/egress/test_output1").send().await.unwrap();
 
         println!("Streaming test");
         let req = server.post("/ingress/test_input1");
@@ -970,7 +970,7 @@ outputs:
 
         // Request quantiles.
         let mut quantiles_resp1 = server
-            .get("/egress/test_output1?mode=snapshot&query=quantiles")
+            .post("/egress/test_output1?mode=snapshot&query=quantiles")
             .send()
             .await
             .unwrap();
@@ -982,7 +982,7 @@ outputs:
 
         // Request quantiles for the input collection -- inputs must also behave as outputs.
         let mut input_quantiles = server
-            .get("/egress/test_input1?mode=snapshot&query=quantiles")
+            .post("/egress/test_input1?mode=snapshot&query=quantiles")
             .send()
             .await
             .unwrap();
@@ -993,7 +993,7 @@ outputs:
 
         // Request neighborhood snapshot.
         let mut hood_resp1 = server
-            .get("/egress/test_output1?mode=snapshot&query=neighborhood")
+            .post("/egress/test_output1?mode=snapshot&query=neighborhood")
             .send_json(
                 &json!({"anchor": {"id": 1000, "b": true, "s": "foo"}, "before": 50, "after": 30}),
             )
@@ -1007,7 +1007,7 @@ outputs:
 
         // Request default neighborhood snapshot.
         let mut hood_resp_default = server
-            .get("/egress/test_output1?mode=snapshot&query=neighborhood")
+            .post("/egress/test_output1?mode=snapshot&query=neighborhood")
             .send_json(&json!({"before": 50, "after": 30}))
             .await
             .unwrap();
@@ -1019,7 +1019,7 @@ outputs:
 
         // Request neighborhood snapshot: invalid request.
         let mut hood_inv_resp = server
-            .get("/egress/test_output1?mode=snapshot&query=neighborhood")
+            .post("/egress/test_output1?mode=snapshot&query=neighborhood")
             .send_json(
                 &json!({"anchor": {"id": "string_instead_of_integer", "b": true, "s": "foo"}, "before": 50, "after": 30}),
             )
@@ -1033,7 +1033,7 @@ outputs:
 
         // Request neighborhood stream.
         let mut hood_resp2 = server
-            .get("/egress/test_output1?mode=watch&query=neighborhood")
+            .post("/egress/test_output1?mode=watch&query=neighborhood")
             .send_json(
                 &json!({"anchor": {"id": 1000, "b": true, "s": "foo"}, "before": 50, "after": 30}),
             )

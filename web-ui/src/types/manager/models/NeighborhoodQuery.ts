@@ -9,6 +9,6 @@
  */
 export type NeighborhoodQuery = {
   after: number
-  anchor: Record<string, any>
+  anchor?: Record<string, any> | null
   before: number
 }

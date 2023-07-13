@@ -23,14 +23,14 @@ export class PipelineService {
    * @param id Unique pipeline identifier
    * @param name Unique pipeline name
    * @param toml Set to true to request the configuration of the pipeline as a toml file.
-   * @returns PipelineDescr Pipeline descriptor retrieved successfully.
+   * @returns string Pipeline descriptor retrieved successfully.
    * @throws ApiError
    */
   public static pipelineStatus(
     id?: string | null,
     name?: string | null,
     toml?: boolean | null
-  ): CancelablePromise<PipelineDescr> {
+  ): CancelablePromise<string> {
     return __request(OpenAPI, {
       method: 'GET',
       url: '/v0/pipeline',
@@ -160,6 +160,7 @@ export class PipelineService {
    * @param format Output data format, e.g., 'csv' or 'json'.
    * @param query Query to execute on the table. Must be one of 'table', 'neighborhood', or 'quantiles'. The default value is 'table'
    * @param mode Output mode. Must be one of 'watch' or 'snapshot'. The default value is 'watch'
+   * @param quantiles For 'quantiles' queries: the number of quantiles to output. The default value is 100.
    * @param requestBody When the `query` parameter is set to 'neighborhood', the body of the request must contain a neighborhood specification.
    * @returns Chunk Connection to the endpoint successfully established. The body of the response contains a stream of data chunks.
    * @throws ApiError
@@ -170,10 +171,11 @@ export class PipelineService {
     format: string,
     query?: OutputQuery | null,
     mode?: EgressMode | null,
+    quantiles?: number | null,
     requestBody?: NeighborhoodQuery | null
   ): CancelablePromise<Chunk> {
     return __request(OpenAPI, {
-      method: 'GET',
+      method: 'POST',
       url: '/v0/pipelines/{pipeline_id}/egress/{table_name}',
       path: {
         pipeline_id: pipelineId,
@@ -182,7 +184,8 @@ export class PipelineService {
       query: {
         format: format,
         query: query,
-        mode: mode
+        mode: mode,
+        quantiles: quantiles
       },
       body: requestBody,
       mediaType: 'application/json',

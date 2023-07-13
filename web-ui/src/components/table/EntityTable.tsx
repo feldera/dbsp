@@ -151,7 +151,6 @@ const EntityTable = <TData extends GridValidRowModel>(props: EntityTableProps<TD
             onChange: (event: ChangeEvent<HTMLInputElement>) => handleSearch(event.target.value)
           },
           errorOverlay: {
-            isError: isError,
             error: error
           }
         }}

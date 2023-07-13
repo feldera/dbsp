@@ -2,20 +2,20 @@
 // load data for some reason (e.g. network error).
 
 import { Alert, AlertTitle } from '@mui/material'
+import { ErrorResponse } from 'src/types/manager'
 
 export interface ErrorProps {
-  isError: boolean
-  error: any
+  error: ErrorResponse | Error | undefined
 }
 
 export const ErrorOverlay = (props: ErrorProps) => {
-  if (props.isError) {
+  if (props.error) {
     return (
       <Alert severity='error'>
         <AlertTitle>Error</AlertTitle>
-        Can't display programs: <strong>{props.error.message}</strong>
+        Unable to load table content:
         <br />
-        Check network connectivity, then try to refresh the page. .
+        <strong>{props.error.message}</strong>
       </Alert>
     )
   } else {

@@ -1,5 +1,7 @@
 // This file contains some utility functions used throughout the project.
 
+import { useState, useCallback } from 'react'
+
 // Escape regular expressions
 //
 // See: https://stackoverflow.com/questions/3561493/is-there-a-regexp-escape-function-in-javascript
@@ -62,4 +64,22 @@ export const PLACEHOLDER_VALUES = {
   connector_description: 'House price data from the UK Land Registry',
   pipeline_name: 'Price Checker',
   pipeline_description: 'Analyze e-commerce prices'
+}
+
+// A way to throw errors in async code so they can be catched with ErrorBoundary
+// in react. Pretty silly, but it works.
+//
+// See:
+// https://medium.com/trabe/catching-asynchronous-errors-in-react-using-error-boundaries-5e8a5fd7b971
+export const useAsyncError = () => {
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const [_, setError] = useState()
+  return useCallback(
+    (e: any) => {
+      setError(() => {
+        throw e
+      })
+    },
+    [setError]
+  )
 }
