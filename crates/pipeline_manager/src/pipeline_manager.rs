@@ -22,6 +22,8 @@
 //! * Runner.  The runner component is responsible for starting and killing
 //!   compiled pipelines and for interacting with them at runtime.
 
+use crate::auth::JwkCache;
+use crate::config::{CompilerConfig, DatabaseConfig};
 use actix_web::dev::Service;
 use actix_web::Scope;
 use actix_web::{
@@ -34,49 +36,31 @@ use actix_web::{
     patch, post, rt,
     web::Data as WebData,
     web::{self, ReqData},
-    App, HttpRequest, HttpResponse, HttpServer, ResponseError,
+    App, HttpRequest, HttpResponse, HttpServer,
 };
 use actix_web_httpauth::middleware::HttpAuthentication;
 use actix_web_static_files::ResourceFiles;
 use anyhow::{Error as AnyError, Result as AnyResult};
-use auth::JwkCache;
-use clap::Parser;
-use colored::Colorize;
 #[cfg(unix)]
 use daemonize::Daemonize;
 use dbsp_adapters::{ControllerError, ErrorResponse};
-use env_logger::Env;
 use log::debug;
 use serde::{Deserialize, Serialize};
-use std::{env, io::Write};
-use std::{
-    fs::{read, write},
-    net::TcpListener,
-    sync::Arc,
-};
+use std::env;
+use std::{net::TcpListener, sync::Arc};
 use tokio::sync::Mutex;
 use utoipa::{OpenApi, ToSchema};
 use utoipa_swagger_ui::SwaggerUi;
 use uuid::{uuid, Uuid};
 
-mod auth;
-mod compiler;
-mod config;
-mod db;
-mod error;
-#[cfg(test)]
-#[cfg(feature = "integration-test")]
-mod integration_test;
-mod runner;
-
-pub(crate) use compiler::{Compiler, ProgramStatus};
-pub(crate) use config::ManagerConfig;
-use db::{
+pub(crate) use crate::compiler::{Compiler, ProgramStatus};
+pub(crate) use crate::config::ManagerConfig;
+use crate::db::{
     storage::Storage, AttachedConnector, AttachedConnectorId, ConnectorId, DBError, PipelineId,
     PipelineRevision, ProgramDescr, ProgramId, ProjectDB, Version,
 };
-pub use error::ManagerError;
-use runner::{LocalRunner, Runner, RunnerError, STARTUP_TIMEOUT};
+pub use crate::error::ManagerError;
+use crate::runner::{LocalRunner, Runner, RunnerError, STARTUP_TIMEOUT};
 
 use crate::auth::TenantId;
 
@@ -140,17 +124,17 @@ observed by the user is outdated, so the request is rejected."
         http_output,
     ),
     components(schemas(
-        compiler::SqlCompilerMessage,
-        db::AttachedConnector,
-        db::ProgramDescr,
-        db::ProgramSchema,
-        db::Relation,
-        db::Field,
-        db::ConnectorDescr,
-        db::PipelineDescr,
-        db::PipelineRevision,
-        db::Revision,
-        db::PipelineStatus,
+        crate::compiler::SqlCompilerMessage,
+        crate::db::AttachedConnector,
+        crate::db::ProgramDescr,
+        crate::db::ProgramSchema,
+        crate::db::Relation,
+        crate::db::Field,
+        crate::db::ConnectorDescr,
+        crate::db::PipelineDescr,
+        crate::db::PipelineRevision,
+        crate::db::Revision,
+        crate::db::PipelineStatus,
         dbsp_adapters::EgressMode,
         dbsp_adapters::PipelineConfig,
         dbsp_adapters::InputEndpointConfig,
@@ -199,60 +183,11 @@ observed by the user is outdated, so the request is rejected."
 )]
 pub struct ApiDoc;
 
-fn main() -> AnyResult<()> {
-    // Stay in single-threaded mode (no tokio) until calling `daemonize`.
-
-    // Create env logger.
-    let name = "[manager]".cyan();
-    env_logger::Builder::from_env(Env::default().default_filter_or("info"))
-        .format(move |buf, record| {
-            let t = chrono::Utc::now();
-            let t = format!("{}", t.format("%Y-%m-%d %H:%M:%S"));
-            writeln!(
-                buf,
-                "{} {} {} {}",
-                t,
-                buf.default_styled_level(record.level()),
-                name,
-                record.args()
-            )
-        })
-        .init();
-
-    let mut config = ManagerConfig::try_parse()?;
-
-    if config.dump_openapi {
-        let openapi_json = ApiDoc::openapi().to_json()?;
-        write("openapi.json", openapi_json.as_bytes())?;
-        return Ok(());
-    }
-
-    if config.precompile {
-        rt::System::new().block_on(Compiler::precompile_dependencies(&config))?;
-        return Ok(());
-    }
-
-    if let Some(config_file) = &config.config_file {
-        let config_yaml = read(config_file).map_err(|e| {
-            AnyError::msg(format!("error reading config file '{config_file}': {e}"))
-        })?;
-        let config_yaml = String::from_utf8_lossy(&config_yaml);
-        config = serde_yaml::from_str(&config_yaml).map_err(|e| {
-            AnyError::msg(format!("error parsing config file '{config_file}': {e}"))
-        })?;
-    }
-
-    let config = config.canonicalize()?;
-
-    run(config)
-}
-
-struct ServerState {
+pub(crate) struct ServerState {
     // Serialize DB access with a lock, so we don't need to deal with
     // transaction conflicts.  The server must avoid holding this lock
     // for a long time to avoid blocking concurrent requests.
-    db: Arc<Mutex<ProjectDB>>,
-    // Dropping this handle kills the compiler task.
+    pub db: Arc<Mutex<ProjectDB>>,
     _compiler: Option<Compiler>,
     runner: Runner,
     _config: ManagerConfig,
@@ -260,16 +195,17 @@ struct ServerState {
 }
 
 impl ServerState {
-    async fn new(
+    pub async fn new(
         config: ManagerConfig,
+        compiler_config: CompilerConfig,
         db: Arc<Mutex<ProjectDB>>,
-        compiler: Option<Compiler>,
     ) -> AnyResult<Self> {
-        let runner = Runner::Local(LocalRunner::new(db.clone(), &config)?);
+        let runner = Runner::Local(LocalRunner::new(db.clone(), &compiler_config)?);
+        let compiler = Compiler::new(&compiler_config, db.clone()).await?;
 
         Ok(Self {
             db,
-            _compiler: compiler,
+            _compiler: Some(compiler),
             runner,
             _config: config,
             jwk_cache: Arc::new(Mutex::new(JwkCache::new())),
@@ -277,30 +213,36 @@ impl ServerState {
     }
 }
 
-fn run(config: ManagerConfig) -> AnyResult<()> {
+pub fn run(
+    database_config: DatabaseConfig,
+    manager_config: ManagerConfig,
+    compiler_config: CompilerConfig,
+) -> AnyResult<()> {
     // Check that the port is available before turning into a daemon, so we can fail
     // early if the port is taken.
-    let listener = TcpListener::bind((config.bind_address.clone(), config.port)).map_err(|e| {
-        AnyError::msg(format!(
-            "failed to bind port '{}:{}': {e}",
-            &config.bind_address, config.port
-        ))
-    })?;
-
-    #[cfg(unix)]
-    if config.unix_daemon {
-        let logfile = std::fs::File::create(config.logfile.as_ref().unwrap()).map_err(|e| {
+    let listener = TcpListener::bind((manager_config.bind_address.clone(), manager_config.port))
+        .map_err(|e| {
             AnyError::msg(format!(
-                "failed to create log file '{}': {e}",
-                &config.logfile.as_ref().unwrap()
+                "failed to bind port '{}:{}': {e}",
+                &manager_config.bind_address, manager_config.port
             ))
         })?;
+
+    #[cfg(unix)]
+    if manager_config.unix_daemon {
+        let logfile =
+            std::fs::File::create(manager_config.logfile.as_ref().unwrap()).map_err(|e| {
+                AnyError::msg(format!(
+                    "failed to create log file '{}': {e}",
+                    &manager_config.logfile.as_ref().unwrap()
+                ))
+            })?;
 
         let logfile_clone = logfile.try_clone().unwrap();
 
         let daemonize = Daemonize::new()
-            .pid_file(config.manager_pid_file_path())
-            .working_directory(&config.working_directory)
+            .pid_file(manager_config.manager_pid_file_path())
+            .working_directory(&manager_config.manager_working_directory)
             .stdout(logfile_clone)
             .stderr(logfile);
 
@@ -311,24 +253,28 @@ fn run(config: ManagerConfig) -> AnyResult<()> {
         })?;
     }
 
-    let dev_mode = config.dev_mode;
-    let use_auth = config.use_auth;
+    let dev_mode = manager_config.dev_mode;
+    let use_auth = manager_config.use_auth;
     rt::System::new().block_on(async {
-        let db = ProjectDB::connect(&config).await?;
+        let db = ProjectDB::connect(
+            &database_config,
+            #[cfg(feature = "pg-embed")]
+            Some(&manager_config),
+        )
+        .await?;
         let db = Arc::new(Mutex::new(db));
-        let compiler = Compiler::new(&config, db.clone()).await?;
 
         // Since we don't trust any file system state after restart,
         // reset all programs to `ProgramStatus::None`, which will force
         // us to recompile programs before running them.
         db.lock().await.reset_program_status().await?;
 
-        let state = WebData::new(ServerState::new(config, db, Some(compiler)).await?);
+        let state = WebData::new(ServerState::new(manager_config, compiler_config, db).await?);
 
         if use_auth {
             let server = HttpServer::new(move || {
-                let auth_middleware = HttpAuthentication::with_fn(auth::auth_validator);
-                let auth_configuration = auth::aws_auth_config();
+                let auth_middleware = HttpAuthentication::with_fn(crate::auth::auth_validator);
+                let auth_configuration = crate::auth::aws_auth_config();
 
                 App::new()
                     .app_data(state.clone())
@@ -346,7 +292,7 @@ fn run(config: ManagerConfig) -> AnyResult<()> {
                     .wrap(Logger::default())
                     .wrap(Condition::new(dev_mode, actix_cors::Cors::permissive()))
                     .service(api_scope().wrap_fn(|req, srv| {
-                        let req = auth::tag_with_default_tenant_id(req);
+                        let req = crate::auth::tag_with_default_tenant_id(req);
                         srv.call(req)
                     }))
                     .service(static_website_scope())
@@ -404,31 +350,31 @@ fn api_scope() -> Scope {
 // Example errors for use in OpenApi docs.
 
 fn example_pipeline_toml() -> String {
-    let input_connector = db::ConnectorDescr {
+    let input_connector = crate::db::ConnectorDescr {
         connector_id: ConnectorId(uuid!("01890c99-376f-743e-ac30-87b6c0ce74ef")),
         name: "Input".into(),
         description: "My Input Connector".into(),
         config: "format: csv\n".into(),
     };
-    let input = db::AttachedConnector {
+    let input = crate::db::AttachedConnector {
         name: "Input-To-Table".into(),
         is_input: true,
         connector_id: input_connector.connector_id,
         config: "my_input_table".into(),
     };
-    let output_connector = db::ConnectorDescr {
+    let output_connector = crate::db::ConnectorDescr {
         connector_id: ConnectorId(uuid!("01890c99-3734-7052-9e97-55c0679a5adb")),
         name: "Output ".into(),
         description: "My Output Connector".into(),
         config: "format: csv\n".into(),
     };
-    let output = db::AttachedConnector {
+    let output = crate::db::AttachedConnector {
         name: "Output-To-View".into(),
         is_input: false,
         connector_id: output_connector.connector_id,
         config: "my_output_view".into(),
     };
-    let pipeline = db::PipelineDescr {
+    let pipeline = crate::db::PipelineDescr {
         pipeline_id: PipelineId(uuid!("67e55044-10b1-426f-9247-bb680e5fe0c8")),
         program_id: Some(ProgramId(uuid!("2e79afe1-ff4d-44d3-af5f-9397de7746c0"))),
         name: "My Pipeline".into(),
@@ -438,7 +384,7 @@ fn example_pipeline_toml() -> String {
         version: Version(1),
         port: 0,
         created: None,
-        status: db::PipelineStatus::Running,
+        status: crate::db::PipelineStatus::Running,
     };
 
     let connectors = vec![input_connector, output_connector];
@@ -1180,7 +1126,7 @@ async fn pipeline_committed(
 ) -> Result<HttpResponse, ManagerError> {
     let pipeline_id = PipelineId(parse_uuid_param(&req, "pipeline_id")?);
 
-    let descr: Option<db::PipelineRevision> = match state
+    let descr: Option<crate::db::PipelineRevision> = match state
         .db
         .lock()
         .await
@@ -1295,7 +1241,7 @@ async fn pipeline_status(
             .insert_header(CacheControl(vec![CacheDirective::NoCache]))
             .body(toml))
     } else {
-        let descr: db::PipelineDescr = if let Some(id) = req.id {
+        let descr: crate::db::PipelineDescr = if let Some(id) = req.id {
             state
                 .db
                 .lock()
@@ -1711,7 +1657,7 @@ async fn connector_status(
     tenant_id: ReqData<TenantId>,
     req: web::Query<IdOrNameQuery>,
 ) -> Result<HttpResponse, ManagerError> {
-    let descr: db::ConnectorDescr = if let Some(id) = req.id {
+    let descr: crate::db::ConnectorDescr = if let Some(id) = req.id {
         state
             .db
             .lock()

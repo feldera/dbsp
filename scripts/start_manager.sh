@@ -43,7 +43,8 @@ fi
 cd "${MANAGER_DIR}" && ~/.cargo/bin/cargo build $RUST_BUILD_PROFILE $PG_EMBED
 cd "${MANAGER_DIR}" && ~/.cargo/bin/cargo run $RUST_BUILD_PROFILE $PG_EMBED -- \
     --bind-address="${BIND_ADDRESS}" \
-    --working-directory="${WORKING_DIR_ABS}" \
+    --manager-working-directory="${WORKING_DIR_ABS}" \
+    --compiler-working-directory="${WORKING_DIR_ABS}" \
     --sql-compiler-home="${SQL_COMPILER_DIR}" \
     --dbsp-override-path="${ROOT_DIR}" \
     --unix-daemon \

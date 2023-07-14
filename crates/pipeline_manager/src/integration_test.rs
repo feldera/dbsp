@@ -11,7 +11,10 @@ use serial_test::serial;
 use tempfile::TempDir;
 use tokio::sync::OnceCell;
 
-use crate::{compiler::Compiler, config::ManagerConfig};
+use crate::{
+    compiler::Compiler,
+    config::{CompilerConfig, DatabaseConfig, ManagerConfig},
+};
 
 const TEST_DBSP_URL_VAR: &str = "TEST_DBSP_URL";
 const TEST_DBSP_DEFAULT_PORT: u16 = 8089;
@@ -40,34 +43,43 @@ async fn initialize_local_dbsp_instance() -> TempDir {
         .unwrap();
     tokio::time::sleep(Duration::from_millis(5000)).await;
     let tmp_dir = TempDir::new().unwrap();
+    let workdir = tmp_dir.path().to_str().unwrap();
+    let database_config = DatabaseConfig {
+        db_connection_string: "postgresql://postgres:postgres@localhost:6666".to_owned(),
+        initial_sql: None,
+    };
     let manager_config = ManagerConfig {
         port: TEST_DBSP_DEFAULT_PORT,
         bind_address: "0.0.0.0".to_owned(),
         logfile: None,
-        working_directory: tmp_dir.path().to_str().unwrap().to_owned(),
+        manager_working_directory: workdir.to_owned(),
+        unix_daemon: false,
+        use_auth: false,
+        dev_mode: false,
+        dump_openapi: false,
+        config_file: None,
+    }
+    .canonicalize()
+    .unwrap();
+    let compiler_config = CompilerConfig {
+        compiler_working_directory: workdir.to_owned(),
         sql_compiler_home: "../../sql-to-dbsp-compiler".to_owned(),
         dbsp_override_path: Some("../../".to_owned()),
         debug: false,
-        unix_daemon: false,
-        use_auth: false,
-        db_connection_string: "postgresql://postgres:postgres@localhost:6666".to_owned(),
-        dump_openapi: false,
         precompile: true,
-        config_file: None,
-        initial_sql: None,
-        dev_mode: false,
-    };
-    let manager_config = manager_config.canonicalize().unwrap();
+    }
+    .canonicalize()
+    .unwrap();
     println!("Using ManagerConfig: {:?}", manager_config);
     println!("Issuing Compiler::precompile_dependencies(). This will be slow.");
-    Compiler::precompile_dependencies(&manager_config)
+    Compiler::precompile_dependencies(&compiler_config)
         .await
         .unwrap();
     println!("Completed Compiler::precompile_dependencies().");
 
     // We can't use tokio::spawn because super::run() creates its own Tokio Runtime
     let _ = std::thread::spawn(|| {
-        super::run(manager_config).unwrap();
+        super::run(database_config, manager_config, compiler_config).unwrap();
     });
     tokio::time::sleep(Duration::from_millis(1000)).await;
     tmp_dir

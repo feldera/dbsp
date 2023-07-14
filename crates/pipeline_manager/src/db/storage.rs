@@ -3,7 +3,8 @@ use super::{
     PipelineId, PipelineRevision, PipelineStatus, ProgramDescr, ProgramId, ProgramSchema, Revision,
     Version,
 };
-use crate::{auth::TenantId, ProgramStatus};
+use crate::auth::TenantId;
+use crate::pipeline_manager::ProgramStatus;
 use async_trait::async_trait;
 use uuid::Uuid;
 

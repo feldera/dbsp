@@ -1,7 +1,9 @@
+#[cfg(feature = "pg-embed")]
+use crate::config::ManagerConfig;
 use crate::{
     auth::{TenantId, TenantRecord},
-    config::ManagerConfig,
-    ProgramStatus,
+    compiler::ProgramStatus,
+    config::DatabaseConfig,
 };
 use async_trait::async_trait;
 use chrono::{DateTime, NaiveDateTime, Utc};
@@ -47,7 +49,7 @@ mod embedded {
 /// queue.  A program is enqueued for compilation by setting its status to
 /// [`ProgramStatus::Pending`].  The `status_since` column is set to the current
 /// time, which determines the position of the program in the queue.
-pub(crate) struct ProjectDB {
+pub struct ProjectDB {
     pool: Pool,
     // Used in dev mode for having an embedded Postgres DB live through the
     // lifetime of the program.
@@ -237,14 +239,14 @@ pub(crate) struct ProgramDescr {
     ///
     /// The given SQL program:
     ///
-    /// ```no_run
+    /// ```ignore
     /// CREATE TABLE USERS ( name varchar );
     /// CREATE VIEW OUTPUT_USERS as SELECT * FROM USERS;
     /// ```
     ///
     /// Would lead the following JSON string in `schema`:
     ///
-    /// ```no_run
+    /// ```ignore
     /// {
     ///   "inputs": [{
     ///       "name": "USERS",
@@ -1696,13 +1698,18 @@ impl Storage for ProjectDB {
 }
 
 impl ProjectDB {
-    pub(crate) async fn connect(config: &ManagerConfig) -> Result<Self, DBError> {
-        let connection_str = config.database_connection_string();
-        let initial_sql = &config.initial_sql;
+    pub async fn connect(
+        db_config: &DatabaseConfig,
+        #[cfg(feature = "pg-embed")] manager_config: Option<&ManagerConfig>,
+    ) -> Result<Self, DBError> {
+        let connection_str = db_config.database_connection_string();
+        let initial_sql = &db_config.initial_sql;
 
         #[cfg(feature = "pg-embed")]
         if connection_str.starts_with("postgres-embed") {
-            let database_dir = config.postgres_embed_data_dir();
+            let database_dir = manager_config
+                .expect("ManagerConfig needs to be provided when using pg-embed")
+                .postgres_embed_data_dir();
             let pg_inst = pg_setup::install(database_dir, true, Some(8082)).await?;
             let connection_string = pg_inst.db_uri.to_string();
             return Self::connect_inner(connection_string.as_str(), initial_sql, Some(pg_inst))

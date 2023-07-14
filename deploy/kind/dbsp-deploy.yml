@@ -65,7 +65,8 @@ spec:
           - ./dbsp_pipeline_manager
         args:
           - --bind-address=0.0.0.0
-          - --working-directory=/working-dir
+          - --manager-working-directory=/working-dir
+          - --compiler-working-directory=/working-dir
           - --sql-compiler-home=/database-stream-processor/sql-to-dbsp-compiler
           - --dbsp-override-path=/database-stream-processor
           - --db-connection-string=postgresql://$(PGUSER):$(PGPASSWORD)@postgres.dbsp.svc.cluster.local:5432
