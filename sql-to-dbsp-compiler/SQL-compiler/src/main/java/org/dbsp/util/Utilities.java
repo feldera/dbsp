@@ -26,6 +26,7 @@
 package org.dbsp.util;
 
 import java.io.*;
+import java.nio.file.Files;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.*;
@@ -148,12 +149,21 @@ public class Utilities {
     }
 
     public static void runProcess(String directory, String... commands) throws IOException, InterruptedException {
-        ProcessBuilder processBuilder = new ProcessBuilder();
-        processBuilder.command(commands);
-        processBuilder.directory(new File(directory));
-        processBuilder.inheritIO();
+        File out = File.createTempFile("out", ".tmp", new File("."));
+        out.deleteOnExit();
+        ProcessBuilder processBuilder = new ProcessBuilder()
+                .command(commands)
+                // If this is called from a JUNIT test the output
+                // of the process interferes with the surefire plugin communication,
+                // so we need to redirect the output.
+                .directory(new File(directory))
+                .redirectOutput(out)
+                .redirectError(out);
         Process process = processBuilder.start();
         int exitCode = process.waitFor();
+        List<String> strings = Files.readAllLines(out.toPath());
+        for (String s: strings)
+            System.out.println(s);
         if (exitCode != 0)
             throw new RuntimeException("Process failed with exit code " + exitCode);
     }

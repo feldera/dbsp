@@ -203,7 +203,7 @@ public class ComplexQueriesTest extends BaseSQLTests {
         writer.emitCodeWithHandle(true);
         writer.add(circuit);
         writer.writeAndClose();
-        Utilities.compileAndTestRust(rustDirectory, false);
+        Utilities.compileAndTestRust(rustDirectory, true);
     }
 
     @Test
@@ -359,7 +359,7 @@ public class ComplexQueriesTest extends BaseSQLTests {
         writer.emitCodeWithHandle(true);
         writer.add(circuit);
         writer.writeAndClose();
-        Utilities.compileAndTestRust(rustDirectory, false);
+        Utilities.compileAndTestRust(rustDirectory, true);
     }
 
     @Test

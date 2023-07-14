@@ -89,7 +89,7 @@ public class BaseSQLTests {
             testNumber++;
         }
         writer.writeAndClose();
-        Utilities.compileAndTestRust(rustDirectory, false, extraArgs);
+        Utilities.compileAndTestRust(rustDirectory, true, extraArgs);
         testsToRun.clear();
     }
 

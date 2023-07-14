@@ -173,7 +173,7 @@ public class OtherTests extends BaseSQLTests implements IWritesLogs {
         File file = this.createInputScript(statements);
         CompilerMain.execute("-TCalciteCompiler=2", "-TPasses=2",
                 "-o", BaseSQLTests.testFilePath, file.getPath());
-        Utilities.compileAndTestRust(BaseSQLTests.rustDirectory, false);
+        Utilities.compileAndTestRust(BaseSQLTests.rustDirectory, true);
         boolean success = file.delete();
         Assert.assertTrue(success);
         Logger.INSTANCE.setDebugStream(save);
@@ -227,7 +227,7 @@ public class OtherTests extends BaseSQLTests implements IWritesLogs {
         RustFileWriter writer = new RustFileWriter(compiler, testFilePath);
         writer.add(circuit);
         writer.writeAndClose();
-        Utilities.compileAndTestRust(rustDirectory, false);
+        Utilities.compileAndTestRust(rustDirectory, true);
     }
 
     @Test
