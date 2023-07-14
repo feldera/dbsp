@@ -258,13 +258,13 @@ where
 
             // Forward pass: locate the anchor and `decr.after`
             // following rows.
-            let mut after = Vec::with_capacity(descr.after);
+            let mut after = Vec::with_capacity(descr.after + 1);
             let mut offset = 0;
 
             if let Some(anchor_key) = anchor_key {
                 cursor.seek_keyval(anchor_key, anchor_val);
             };
-            while cursor.keyval_valid() && offset < descr.after {
+            while cursor.keyval_valid() && offset <= descr.after {
                 let w = cursor.weight();
 
                 if !cursor.weight().is_zero() {
@@ -371,13 +371,13 @@ where
             let anchor_key = &descr.anchor;
             let anchor_val = &descr.anchor_val;
 
-            let mut after = Vec::with_capacity(descr.after);
+            let mut after = Vec::with_capacity(descr.after + 1);
             let mut offset = 0;
 
             if let Some(anchor_key) = anchor_key {
                 cursor.seek_keyval(anchor_key, anchor_val);
             }
-            while cursor.keyval_valid() && offset < descr.after {
+            while cursor.keyval_valid() && offset <= descr.after {
                 let w = cursor.weight();
 
                 if !cursor.weight().is_zero() {
@@ -480,7 +480,7 @@ mod test {
                 };
 
                 let mut from = start - descr.before as isize;
-                let mut to = start + descr.after as isize;
+                let mut to = start + descr.after as isize + 1;
 
                 from = max(from, 0);
                 to = min(to, tuples.len() as isize);
@@ -664,7 +664,8 @@ mod test {
                 ((1, (12, 0), ()), 1),
                 ((2, (13, 0), ()), 1),
                 ((3, (14, 0), ()), 1),
-                ((4, (14, 1), ()), 1)
+                ((4, (14, 1), ()), 1),
+                ((5, (14, 2), ()), 1)
             ]
         );
 
@@ -680,6 +681,7 @@ mod test {
                 ((2, (9, 0), ()), 1),
                 ((3, (9, 1), ()), 1),
                 ((4, (10, 11), ()), 1),
+                ((5, (12, 0), ()), 1),
             ]
         );
     }
