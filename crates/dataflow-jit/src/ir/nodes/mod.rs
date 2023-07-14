@@ -8,9 +8,12 @@ mod io;
 mod join;
 mod subgraph;
 mod sum;
+mod topk;
 
-pub use crate::ir::stream_layout::{StreamKind, StreamLayout};
-pub use crate::ir::NodeId;
+pub use crate::ir::{
+    stream_layout::{StreamKind, StreamLayout},
+    NodeId,
+};
 pub use aggregate::{Fold, Max, Min, PartitionedRollingFold};
 pub use constant::ConstantStream;
 pub use differentiate::{Differentiate, Integrate};
@@ -21,6 +24,7 @@ pub use io::{Export, ExportedNode, Sink, Source, SourceMap};
 pub use join::{Antijoin, JoinCore, MonotonicJoin};
 pub use subgraph::Subgraph;
 pub use sum::{Minus, Sum};
+pub use topk::{TopK, TopkOrder};
 
 use crate::ir::{
     function::Function,
@@ -66,6 +70,7 @@ pub enum Node {
     Antijoin(Antijoin),
     IndexByColumn(IndexByColumn),
     UnitMapToSet(UnitMapToSet),
+    Topk(TopK),
     // TODO: OrderBy, Windows
 }
 
@@ -122,9 +127,6 @@ where
             Node::DelayedFeedback(delayed_feedback) => delayed_feedback.pretty(alloc, cache),
             Node::Distinct(distinct) => distinct.pretty(alloc, cache),
             Node::JoinCore(join_core) => join_core.pretty(alloc, cache),
-            // Node::Subgraph(subgraph) => subgraph.pretty(alloc, cache),
-            // Node::Export(export) => export.pretty(alloc, cache),
-            // Node::ExportedNode(exported_node) => exported_node.pretty(alloc, cache),
             Node::MonotonicJoin(monotonic_join) => monotonic_join.pretty(alloc, cache),
             Node::ConstantStream(constant) => constant.pretty(alloc, cache),
             Node::PartitionedRollingFold(rolling_fold) => rolling_fold.pretty(alloc, cache),
@@ -132,7 +134,12 @@ where
             Node::Antijoin(antijoin) => antijoin.pretty(alloc, cache),
             Node::IndexByColumn(index_by_column) => index_by_column.pretty(alloc, cache),
             Node::UnitMapToSet(unit_map_to_set) => unit_map_to_set.pretty(alloc, cache),
-            _ => alloc.nil(),
+            Node::Topk(topk) => topk.pretty(alloc, cache),
+
+            Node::Subgraph(_) | Node::Export(_) | Node::ExportedNode(_) => alloc.nil(),
+            // Node::Subgraph(subgraph) => subgraph.pretty(alloc, cache),
+            // Node::Export(export) => export.pretty(alloc, cache),
+            // Node::ExportedNode(exported_node) => exported_node.pretty(alloc, cache),
         }
     }
 }
@@ -152,10 +159,19 @@ pub trait DataflowNode {
     where
         F: FnMut(&mut NodeId) + ?Sized;
 
-    fn output_stream(&self, inputs: &[StreamLayout]) -> Option<StreamLayout>;
+    fn output_stream(
+        &self,
+        inputs: &[StreamLayout],
+        layout_cache: &RowLayoutCache,
+    ) -> Option<StreamLayout>;
 
-    fn output_kind(&self, inputs: &[StreamLayout]) -> Option<StreamKind> {
-        self.output_stream(inputs).map(StreamLayout::kind)
+    fn output_kind(
+        &self,
+        inputs: &[StreamLayout],
+        layout_cache: &RowLayoutCache,
+    ) -> Option<StreamKind> {
+        self.output_stream(inputs, layout_cache)
+            .map(StreamLayout::kind)
     }
 
     fn validate(&self, inputs: &[StreamLayout], layout_cache: &RowLayoutCache);
@@ -208,7 +224,11 @@ impl DataflowNode for Distinct {
         map(&mut self.input);
     }
 
-    fn output_stream(&self, _inputs: &[StreamLayout]) -> Option<StreamLayout> {
+    fn output_stream(
+        &self,
+        _inputs: &[StreamLayout],
+        _layout_cache: &RowLayoutCache,
+    ) -> Option<StreamLayout> {
         Some(self.layout)
     }
 
@@ -275,7 +295,11 @@ impl DataflowNode for DelayedFeedback {
     {
     }
 
-    fn output_stream(&self, _inputs: &[StreamLayout]) -> Option<StreamLayout> {
+    fn output_stream(
+        &self,
+        _inputs: &[StreamLayout],
+        _layout_cache: &RowLayoutCache,
+    ) -> Option<StreamLayout> {
         Some(StreamLayout::Set(self.layout))
     }
 
@@ -343,7 +367,11 @@ impl DataflowNode for Delta0 {
         map(&mut self.input);
     }
 
-    fn output_stream(&self, _inputs: &[StreamLayout]) -> Option<StreamLayout> {
+    fn output_stream(
+        &self,
+        _inputs: &[StreamLayout],
+        _layout_cache: &RowLayoutCache,
+    ) -> Option<StreamLayout> {
         Some(self.layout)
     }
 
@@ -416,7 +444,11 @@ impl DataflowNode for Neg {
         map(&mut self.input);
     }
 
-    fn output_stream(&self, _inputs: &[StreamLayout]) -> Option<StreamLayout> {
+    fn output_stream(
+        &self,
+        _inputs: &[StreamLayout],
+        _layout_cache: &RowLayoutCache,
+    ) -> Option<StreamLayout> {
         Some(self.layout)
     }
 

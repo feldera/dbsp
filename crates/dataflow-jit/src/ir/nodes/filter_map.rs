@@ -64,7 +64,11 @@ impl DataflowNode for Map {
         map(&mut self.input);
     }
 
-    fn output_stream(&self, _inputs: &[StreamLayout]) -> Option<StreamLayout> {
+    fn output_stream(
+        &self,
+        _inputs: &[StreamLayout],
+        _layout_cache: &RowLayoutCache,
+    ) -> Option<StreamLayout> {
         Some(self.output_layout)
     }
 
@@ -226,7 +230,11 @@ impl DataflowNode for Filter {
         map(&mut self.input);
     }
 
-    fn output_stream(&self, inputs: &[StreamLayout]) -> Option<StreamLayout> {
+    fn output_stream(
+        &self,
+        inputs: &[StreamLayout],
+        _layout_cache: &RowLayoutCache,
+    ) -> Option<StreamLayout> {
         Some(match inputs[0] {
             StreamLayout::Set(value) => StreamLayout::Set(value),
             StreamLayout::Map(key, value) => StreamLayout::Map(key, value),
@@ -330,7 +338,11 @@ impl DataflowNode for FilterMap {
         map(&mut self.input);
     }
 
-    fn output_stream(&self, inputs: &[StreamLayout]) -> Option<StreamLayout> {
+    fn output_stream(
+        &self,
+        inputs: &[StreamLayout],
+        _layout_cache: &RowLayoutCache,
+    ) -> Option<StreamLayout> {
         Some(match inputs[0] {
             StreamLayout::Set(_) => StreamLayout::Set(self.layout),
             StreamLayout::Map(key_layout, _) => StreamLayout::Map(key_layout, self.layout),

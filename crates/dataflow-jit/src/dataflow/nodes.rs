@@ -2,7 +2,7 @@ use crate::{
     codegen::VTable,
     dataflow::RowZSet,
     ir::{
-        nodes::{StreamKind, StreamLayout},
+        nodes::{StreamKind, StreamLayout, TopkOrder},
         LayoutId, NodeId,
     },
     row::Row,
@@ -47,6 +47,14 @@ pub enum DataflowNode {
     Antijoin(Antijoin),
     IndexByColumn(IndexByColumn),
     UnitMapToSet(UnitMapToSet),
+    Topk(Topk),
+}
+
+#[derive(Debug, Clone)]
+pub struct Topk {
+    pub input: NodeId,
+    pub k: u64,
+    pub order: TopkOrder,
 }
 
 #[derive(Debug, Clone)]

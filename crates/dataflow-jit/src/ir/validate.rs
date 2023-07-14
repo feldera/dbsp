@@ -26,6 +26,8 @@ use std::{
     error::Error,
 };
 
+use super::nodes::TopK;
+
 // TODO: Validate block parameters
 
 pub type ValidationResult<T = ()> = Result<T, ValidationError>;
@@ -444,6 +446,10 @@ impl NodeVisitor for MetaCollector<'_> {
             map_to_set.input(),
             StreamLayout::Set(map_to_set.value_layout()),
         );
+    }
+
+    fn visit_topk(&mut self, node_id: NodeId, topk: &TopK) {
+        self.add_unary(node_id, topk.input(), topk.layout());
     }
 
     fn visit_subgraph(&mut self, node_id: NodeId, subgraph: &Subgraph) {

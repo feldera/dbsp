@@ -7,12 +7,14 @@ use crate::{
     dataflow::nodes::{
         Antijoin, DataflowSubgraph, DelayedFeedback, Delta0, Differentiate, Distinct, Export,
         FilterFn, FilterMap, FilterMapIndex, FlatMap, FlatMapFn, Fold, IndexByColumn, Integrate,
-        JoinCore, MapFn, Max, Min, Minus, Noop, PartitionedRollingFold, UnitMapToSet,
+        JoinCore, MapFn, Max, Min, Minus, Noop, PartitionedRollingFold, Topk, UnitMapToSet,
     },
     ir::{
         graph,
         literal::StreamCollection,
-        nodes::{DataflowNode as _, Node, StreamKind, StreamLayout, Subgraph as SubgraphNode},
+        nodes::{
+            DataflowNode as _, Node, StreamKind, StreamLayout, Subgraph as SubgraphNode, TopkOrder,
+        },
         Graph, GraphExt, LayoutId, NodeId,
     },
     row::{row_from_literal, Row, UninitRow},
@@ -206,8 +208,8 @@ impl CompiledDataflow {
             node.inputs(&mut input_nodes);
             inputs.extend(input_nodes.iter().filter_map(|input| node_streams[input]));
 
-            node_kinds.insert(node_id, node.output_kind(&inputs));
-            node_streams.insert(node_id, node.output_stream(&inputs));
+            node_kinds.insert(node_id, node.output_kind(&inputs, graph.layout_cache()));
+            node_streams.insert(node_id, node.output_stream(&inputs, graph.layout_cache()));
 
             inputs.clear();
             input_nodes.clear();
@@ -241,8 +243,8 @@ impl CompiledDataflow {
                 node.inputs(input_nodes);
                 inputs.extend(input_nodes.iter().filter_map(|input| node_streams[input]));
 
-                node_kinds.insert(node_id, node.output_kind(inputs));
-                node_streams.insert(node_id, node.output_stream(inputs));
+                node_kinds.insert(node_id, node.output_kind(inputs, graph.layout_cache()));
+                node_streams.insert(node_id, node.output_stream(inputs, graph.layout_cache()));
 
                 inputs.clear();
                 input_nodes.clear();
@@ -259,222 +261,6 @@ impl CompiledDataflow {
             }
         }
 
-        fn collect_functions(
-            codegen: &mut Codegen,
-            functions: &mut BTreeMap<NodeId, Vec<FuncId>>,
-            vtables: &mut BTreeMap<LayoutId, LayoutVTable>,
-            graph: &graph::Subgraph,
-        ) {
-            for (&node_id, node) in graph.nodes() {
-                match node {
-                    Node::Map(map) => {
-                        let map_fn =
-                            codegen.codegen_func(&format!("map_fn_{node_id}"), map.map_fn());
-                        functions.insert(node_id, vec![map_fn]);
-
-                        for layout in [map.input_layout(), map.output_layout()] {
-                            match layout {
-                                StreamLayout::Set(key) => {
-                                    vtables
-                                        .entry(key)
-                                        .or_insert_with(|| codegen.vtable_for(key));
-                                }
-
-                                StreamLayout::Map(key, value) => {
-                                    vtables
-                                        .entry(key)
-                                        .or_insert_with(|| codegen.vtable_for(key));
-                                    vtables
-                                        .entry(value)
-                                        .or_insert_with(|| codegen.vtable_for(value));
-                                }
-                            }
-                        }
-                    }
-
-                    Node::Filter(filter) => {
-                        let filter_fn = codegen
-                            .codegen_func(&format!("filter_fn_{node_id}"), filter.filter_fn());
-                        functions.insert(node_id, vec![filter_fn]);
-                    }
-
-                    Node::FilterMap(filter_map) => {
-                        let fmap_fn = codegen.codegen_func(
-                            &format!("filter_map_fn_{node_id}"),
-                            filter_map.filter_map(),
-                        );
-                        functions.insert(node_id, vec![fmap_fn]);
-
-                        vtables
-                            .entry(filter_map.layout())
-                            .or_insert_with(|| codegen.vtable_for(filter_map.layout()));
-                    }
-
-                    Node::Fold(fold) => {
-                        let step_fn = codegen
-                            .codegen_func(&format!("fold_step_fn_{node_id}"), fold.step_fn());
-                        let finish_fn = codegen
-                            .codegen_func(&format!("fold_finish_fn_{node_id}"), fold.finish_fn());
-                        functions.insert(node_id, vec![step_fn, finish_fn]);
-
-                        for layout in [fold.acc_layout(), fold.step_layout(), fold.output_layout()]
-                        {
-                            vtables
-                                .entry(layout)
-                                .or_insert_with(|| codegen.vtable_for(layout));
-                        }
-                    }
-
-                    Node::PartitionedRollingFold(fold) => {
-                        let step_fn = codegen.codegen_func(
-                            &format!("partitioned_rolling_fold_step_fn_{node_id}"),
-                            fold.step_fn(),
-                        );
-                        let finish_fn = codegen.codegen_func(
-                            &format!("partitioned_rolling_fold_finish_fn_{node_id}"),
-                            fold.finish_fn(),
-                        );
-                        functions.insert(node_id, vec![step_fn, finish_fn]);
-
-                        for layout in [fold.acc_layout(), fold.step_layout(), fold.output_layout()]
-                        {
-                            vtables
-                                .entry(layout)
-                                .or_insert_with(|| codegen.vtable_for(layout));
-                        }
-                    }
-
-                    Node::FlatMap(flat_map) => {
-                        let flat_map_fn = codegen
-                            .codegen_func(&format!("flat_map_fn_{node_id}"), flat_map.flat_map());
-                        functions.insert(node_id, vec![flat_map_fn]);
-
-                        match flat_map.output_layout() {
-                            StreamLayout::Set(key) => {
-                                vtables
-                                    .entry(key)
-                                    .or_insert_with(|| codegen.vtable_for(key));
-                            }
-
-                            StreamLayout::Map(key, value) => {
-                                vtables
-                                    .entry(key)
-                                    .or_insert_with(|| codegen.vtable_for(key));
-                                vtables
-                                    .entry(value)
-                                    .or_insert_with(|| codegen.vtable_for(value));
-                            }
-                        }
-                    }
-
-                    Node::IndexWith(index_with) => {
-                        let index_fn = codegen
-                            .codegen_func(&format!("index_fn_{node_id}"), index_with.index_fn());
-                        functions.insert(node_id, vec![index_fn]);
-
-                        vtables
-                            .entry(index_with.key_layout())
-                            .or_insert_with(|| codegen.vtable_for(index_with.key_layout()));
-                        vtables
-                            .entry(index_with.value_layout())
-                            .or_insert_with(|| codegen.vtable_for(index_with.value_layout()));
-                    }
-
-                    Node::IndexByColumn(index_by) => {
-                        let (owned, borrowed) = codegen.codegen_index_by_column(index_by);
-                        functions.insert(node_id, vec![owned, borrowed]);
-
-                        vtables
-                            .entry(index_by.key_layout())
-                            .or_insert_with(|| codegen.vtable_for(index_by.key_layout()));
-                        vtables
-                            .entry(index_by.value_layout())
-                            .or_insert_with(|| codegen.vtable_for(index_by.value_layout()));
-                    }
-
-                    Node::Source(source) => {
-                        vtables
-                            .entry(source.layout())
-                            .or_insert_with(|| codegen.vtable_for(source.layout()));
-                    }
-
-                    Node::SourceMap(source) => {
-                        vtables
-                            .entry(source.key())
-                            .or_insert_with(|| codegen.vtable_for(source.key()));
-                        vtables
-                            .entry(source.value())
-                            .or_insert_with(|| codegen.vtable_for(source.value()));
-                    }
-
-                    Node::JoinCore(join) => {
-                        let join_fn =
-                            codegen.codegen_func(&format!("join_fn_{node_id}"), join.join_fn());
-                        functions.insert(node_id, vec![join_fn]);
-
-                        vtables
-                            .entry(join.key_layout())
-                            .or_insert_with(|| codegen.vtable_for(join.key_layout()));
-                        vtables
-                            .entry(join.value_layout())
-                            .or_insert_with(|| codegen.vtable_for(join.value_layout()));
-                    }
-
-                    Node::MonotonicJoin(join) => {
-                        let join_fn = codegen
-                            .codegen_func(&format!("monotonic_join_fn_{node_id}"), join.join_fn());
-                        functions.insert(node_id, vec![join_fn]);
-
-                        vtables
-                            .entry(join.key_layout())
-                            .or_insert_with(|| codegen.vtable_for(join.key_layout()));
-                    }
-
-                    Node::Subgraph(subgraph) => {
-                        collect_functions(codegen, functions, vtables, subgraph.subgraph());
-                    }
-
-                    Node::ConstantStream(constant) => match constant.layout() {
-                        StreamLayout::Set(key) => {
-                            vtables
-                                .entry(key)
-                                .or_insert_with(|| codegen.vtable_for(key));
-                        }
-
-                        StreamLayout::Map(key, value) => {
-                            vtables
-                                .entry(key)
-                                .or_insert_with(|| codegen.vtable_for(key));
-                            vtables
-                                .entry(value)
-                                .or_insert_with(|| codegen.vtable_for(value));
-                        }
-                    },
-
-                    Node::UnitMapToSet(map_to_set) => {
-                        vtables
-                            .entry(map_to_set.value_layout())
-                            .or_insert_with(|| codegen.vtable_for(map_to_set.value_layout()));
-                    }
-
-                    Node::Min(_)
-                    | Node::Max(_)
-                    | Node::Distinct(_)
-                    | Node::Delta0(_)
-                    | Node::DelayedFeedback(_)
-                    | Node::Neg(_)
-                    | Node::Sum(_)
-                    | Node::Differentiate(_)
-                    | Node::Integrate(_)
-                    | Node::Sink(_)
-                    | Node::Export(_)
-                    | Node::ExportedNode(_)
-                    | Node::Minus(_)
-                    | Node::Antijoin(_) => {}
-                }
-            }
-        }
-
         // Run codegen over all nodes
         let mut codegen = Codegen::new(graph.layout_cache().clone(), config);
         // TODO: SmallVec
@@ -487,528 +273,6 @@ impl CompiledDataflow {
             graph.graph(),
         );
         with_codegen(&mut codegen);
-
-        fn compile_nodes(
-            graph: &graph::Subgraph,
-            vtables: &BTreeMap<LayoutId, *mut VTable>,
-            jit: &JITModule,
-            node_streams: &BTreeMap<NodeId, Option<StreamLayout>>,
-            node_functions: &BTreeMap<NodeId, Vec<FuncId>>,
-            layout_cache: &NativeLayoutCache,
-        ) -> BTreeMap<NodeId, DataflowNode> {
-            let mut nodes = BTreeMap::new();
-            for (node_id, node) in graph.nodes() {
-                let output = node_streams[node_id];
-
-                match node {
-                    Node::Map(map) => {
-                        let input = map.input();
-                        let map_fn = jit.get_finalized_function(node_functions[node_id][0]);
-
-                        let map_fn = unsafe {
-                            match (map.input_layout(), map.output_layout()) {
-                                (StreamLayout::Set(_), StreamLayout::Set(key_layout)) => {
-                                    MapFn::SetSet {
-                                        map: transmute(map_fn),
-                                        key_vtable: &*vtables[&key_layout],
-                                    }
-                                }
-
-                                (
-                                    StreamLayout::Set(_),
-                                    StreamLayout::Map(key_layout, value_layout),
-                                ) => MapFn::SetMap {
-                                    map: transmute(map_fn),
-                                    key_vtable: &*vtables[&key_layout],
-                                    value_vtable: &*vtables[&value_layout],
-                                },
-
-                                (StreamLayout::Map(_, _), StreamLayout::Set(key_layout)) => {
-                                    MapFn::MapSet {
-                                        map: transmute(map_fn),
-                                        key_vtable: &*vtables[&key_layout],
-                                    }
-                                }
-
-                                (
-                                    StreamLayout::Map(_, _),
-                                    StreamLayout::Map(key_layout, value_layout),
-                                ) => MapFn::MapMap {
-                                    map: transmute(map_fn),
-                                    key_vtable: &*vtables[&key_layout],
-                                    value_vtable: &*vtables[&value_layout],
-                                },
-                            }
-                        };
-                        let map = DataflowNode::Map(Map { input, map_fn });
-
-                        nodes.insert(*node_id, map);
-                    }
-
-                    Node::Filter(filter) => {
-                        let filter_fn = jit.get_finalized_function(node_functions[node_id][0]);
-                        let input = filter.input();
-
-                        let (filter_fn, layout) = unsafe {
-                            match output.unwrap() {
-                                StreamLayout::Set(key) => {
-                                    (FilterFn::Set(transmute(filter_fn)), StreamLayout::Set(key))
-                                }
-                                StreamLayout::Map(key, value) => (
-                                    FilterFn::Map(transmute(filter_fn)),
-                                    StreamLayout::Map(key, value),
-                                ),
-                            }
-                        };
-                        let filter = DataflowNode::Filter(Filter {
-                            input,
-                            filter_fn,
-                            layout,
-                        });
-
-                        nodes.insert(*node_id, filter);
-                    }
-
-                    Node::FilterMap(filter_map) => {
-                        let fmap_fn = jit.get_finalized_function(node_functions[node_id][0]);
-                        let input = filter_map.input();
-                        let output_vtable = unsafe { &*vtables[&filter_map.layout()] };
-
-                        let node = match output.unwrap() {
-                            StreamLayout::Set(_) => DataflowNode::FilterMap(FilterMap {
-                                input,
-                                filter_map: unsafe {
-                                    transmute::<_, unsafe extern "C" fn(*const u8, *mut u8) -> bool>(
-                                        fmap_fn,
-                                    )
-                                },
-                                output_vtable,
-                            }),
-
-                            StreamLayout::Map(..) => DataflowNode::FilterMapIndex(FilterMapIndex {
-                                input,
-                                filter_map: unsafe {
-                                    transmute::<
-                                        _,
-                                        unsafe extern "C" fn(*const u8, *const u8, *mut u8) -> bool,
-                                    >(fmap_fn)
-                                },
-                                output_vtable,
-                            }),
-                        };
-
-                        nodes.insert(*node_id, node);
-                    }
-
-                    Node::FlatMap(flat_map) => {
-                        let flat_map_fn = jit.get_finalized_function(node_functions[node_id][0]);
-                        let input_is_map = node_streams[&flat_map.input()].unwrap().is_map();
-                        let flat_map = DataflowNode::FlatMap(FlatMap {
-                            input: flat_map.input(),
-                            flat_map: match flat_map.output_layout() {
-                                StreamLayout::Set(key) => {
-                                    let key_vtable = unsafe { &*vtables[&key] };
-
-                                    if input_is_map {
-                                        FlatMapFn::MapSet {
-                                            flat_map: unsafe { transmute(flat_map_fn) },
-                                            key_vtable,
-                                        }
-                                    } else {
-                                        FlatMapFn::SetSet {
-                                            flat_map: unsafe { transmute(flat_map_fn) },
-                                            key_vtable,
-                                        }
-                                    }
-                                }
-
-                                StreamLayout::Map(key, value) => {
-                                    let (key_vtable, value_vtable) =
-                                        unsafe { (&*vtables[&key], &*vtables[&value]) };
-
-                                    if input_is_map {
-                                        FlatMapFn::MapMap {
-                                            flat_map: unsafe { transmute(flat_map_fn) },
-                                            key_vtable,
-                                            value_vtable,
-                                        }
-                                    } else {
-                                        FlatMapFn::SetMap {
-                                            flat_map: unsafe { transmute(flat_map_fn) },
-                                            key_vtable,
-                                            value_vtable,
-                                        }
-                                    }
-                                }
-                            },
-                        });
-                        nodes.insert(*node_id, flat_map);
-                    }
-
-                    Node::Neg(neg) => {
-                        nodes.insert(*node_id, DataflowNode::Neg(Neg { input: neg.input() }));
-                    }
-
-                    Node::Sum(sum) => {
-                        nodes.insert(
-                            *node_id,
-                            DataflowNode::Sum(Sum {
-                                inputs: sum.inputs().to_vec(),
-                            }),
-                        );
-                    }
-
-                    Node::Minus(minus) => {
-                        nodes.insert(
-                            *node_id,
-                            DataflowNode::Minus(Minus {
-                                lhs: minus.lhs(),
-                                rhs: minus.rhs(),
-                            }),
-                        );
-                    }
-
-                    Node::Fold(fold) => {
-                        let (acc_vtable, step_vtable, output_vtable) = unsafe {
-                            (
-                                &*vtables[&fold.acc_layout()],
-                                &*vtables[&fold.step_layout()],
-                                &*vtables[&fold.output_layout()],
-                            )
-                        };
-                        let acc_layout = layout_cache.layout_of(fold.acc_layout());
-
-                        let init =
-                            unsafe { row_from_literal(fold.init(), acc_vtable, &acc_layout) };
-
-                        let (step_fn, finish_fn) = (
-                            jit.get_finalized_function(node_functions[node_id][0]),
-                            jit.get_finalized_function(node_functions[node_id][1]),
-                        );
-
-                        let fold = DataflowNode::Fold(Fold {
-                            input: fold.input(),
-                            init,
-                            acc_vtable,
-                            step_vtable,
-                            output_vtable,
-                            step_fn: unsafe { transmute(step_fn) },
-                            finish_fn: unsafe { transmute(finish_fn) },
-                        });
-                        nodes.insert(*node_id, fold);
-                    }
-
-                    Node::PartitionedRollingFold(fold) => {
-                        let (acc_vtable, step_vtable, output_vtable) = unsafe {
-                            (
-                                &*vtables[&fold.acc_layout()],
-                                &*vtables[&fold.step_layout()],
-                                &*vtables[&fold.output_layout()],
-                            )
-                        };
-                        let acc_layout = layout_cache.layout_of(fold.acc_layout());
-
-                        let init =
-                            unsafe { row_from_literal(fold.init(), acc_vtable, &acc_layout) };
-
-                        let (step_fn, finish_fn) = (
-                            jit.get_finalized_function(node_functions[node_id][0]),
-                            jit.get_finalized_function(node_functions[node_id][1]),
-                        );
-
-                        let fold = DataflowNode::PartitionedRollingFold(PartitionedRollingFold {
-                            input: fold.input(),
-                            range: fold.range(),
-                            init,
-                            acc_vtable,
-                            step_vtable,
-                            output_vtable,
-                            step_fn: unsafe { transmute(step_fn) },
-                            finish_fn: unsafe { transmute(finish_fn) },
-                        });
-                        nodes.insert(*node_id, fold);
-                    }
-
-                    Node::Sink(sink) => {
-                        nodes.insert(
-                            *node_id,
-                            DataflowNode::Sink(Sink {
-                                input: sink.input(),
-                                layout: node_streams[&sink.input()].unwrap(),
-                            }),
-                        );
-                    }
-
-                    Node::Source(source) => {
-                        nodes.insert(
-                            *node_id,
-                            DataflowNode::Source(Source {
-                                key_layout: source.layout(),
-                            }),
-                        );
-                    }
-
-                    Node::SourceMap(source) => {
-                        nodes.insert(
-                            *node_id,
-                            DataflowNode::SourceMap(SourceMap {
-                                key_layout: source.key(),
-                                value_layout: source.value(),
-                            }),
-                        );
-                    }
-
-                    Node::IndexWith(index) => {
-                        let input = index.input();
-                        let index_fn = jit.get_finalized_function(node_functions[node_id][0]);
-                        let key_vtable = unsafe { &*vtables[&index.key_layout()] };
-                        let value_vtable = unsafe { &*vtables[&index.value_layout()] };
-
-                        let node = match node_streams[&input].unwrap() {
-                            StreamLayout::Set(_) => DataflowNode::IndexWith(IndexWith {
-                                input,
-                                index_fn: unsafe {
-                                    transmute::<_, unsafe extern "C" fn(*const u8, *mut u8, *mut u8)>(
-                                        index_fn,
-                                    )
-                                },
-                                key_vtable,
-                                value_vtable,
-                            }),
-
-                            StreamLayout::Map(..) => todo!(),
-                        };
-
-                        nodes.insert(*node_id, node);
-                    }
-
-                    Node::IndexByColumn(index_by) => {
-                        let input = index_by.input();
-                        let owned_fn = jit.get_finalized_function(node_functions[node_id][0]);
-                        let borrowed_fn = jit.get_finalized_function(node_functions[node_id][1]);
-                        let key_vtable = unsafe { &*vtables[&index_by.key_layout()] };
-                        let value_vtable = unsafe { &*vtables[&index_by.value_layout()] };
-
-                        let node = DataflowNode::IndexByColumn(IndexByColumn {
-                            input,
-                            owned_fn: unsafe { transmute(owned_fn) },
-                            borrowed_fn: unsafe { transmute(borrowed_fn) },
-                            key_vtable,
-                            value_vtable,
-                        });
-
-                        nodes.insert(*node_id, node);
-                    }
-
-                    Node::UnitMapToSet(map_to_set) => {
-                        nodes.insert(
-                            *node_id,
-                            DataflowNode::UnitMapToSet(UnitMapToSet {
-                                input: map_to_set.input(),
-                            }),
-                        );
-                    }
-
-                    Node::Differentiate(diff) => {
-                        nodes.insert(
-                            *node_id,
-                            DataflowNode::Differentiate(Differentiate {
-                                input: diff.input(),
-                            }),
-                        );
-                    }
-
-                    Node::Integrate(integrate) => {
-                        nodes.insert(
-                            *node_id,
-                            DataflowNode::Integrate(Integrate {
-                                input: integrate.input(),
-                            }),
-                        );
-                    }
-
-                    Node::Delta0(delta) => {
-                        nodes.insert(
-                            *node_id,
-                            DataflowNode::Delta0(Delta0 {
-                                input: delta.input(),
-                            }),
-                        );
-                    }
-
-                    Node::DelayedFeedback(_) => {
-                        nodes.insert(*node_id, DataflowNode::DelayedFeedback(DelayedFeedback {}));
-                    }
-
-                    Node::Min(min) => {
-                        nodes.insert(*node_id, DataflowNode::Min(Min { input: min.input() }));
-                    }
-
-                    Node::Max(max) => {
-                        nodes.insert(*node_id, DataflowNode::Max(Max { input: max.input() }));
-                    }
-
-                    Node::Distinct(distinct) => {
-                        nodes.insert(
-                            *node_id,
-                            DataflowNode::Distinct(Distinct {
-                                input: distinct.input(),
-                            }),
-                        );
-                    }
-
-                    Node::JoinCore(join) => {
-                        let (lhs, rhs) = (join.lhs(), join.rhs());
-                        let join_fn = jit.get_finalized_function(node_functions[node_id][0]);
-                        let key_vtable = unsafe { &*vtables[&join.key_layout()] };
-                        let value_vtable = unsafe { &*vtables[&join.value_layout()] };
-
-                        let node = match (node_streams[&lhs].unwrap(), node_streams[&rhs].unwrap())
-                        {
-                            (StreamLayout::Map(..), StreamLayout::Map(..)) => {
-                                DataflowNode::JoinCore(JoinCore {
-                                    lhs,
-                                    rhs,
-                                    join_fn: unsafe {
-                                        transmute::<
-                                            _,
-                                            unsafe extern "C" fn(
-                                                *const u8,
-                                                *const u8,
-                                                *const u8,
-                                                *mut u8,
-                                                *mut u8,
-                                            ),
-                                        >(join_fn)
-                                    },
-                                    key_vtable,
-                                    value_vtable,
-                                    output_kind: join.result_kind(),
-                                })
-                            }
-
-                            _ => todo!(),
-                        };
-
-                        nodes.insert(*node_id, node);
-                    }
-
-                    Node::MonotonicJoin(join) => {
-                        let (lhs, rhs) = (join.lhs(), join.rhs());
-                        let join_fn = jit.get_finalized_function(node_functions[node_id][0]);
-                        let key_vtable = unsafe { &*vtables[&join.key_layout()] };
-
-                        let node = DataflowNode::MonotonicJoin(MonotonicJoin {
-                            lhs,
-                            rhs,
-                            join_fn: unsafe {
-                                transmute::<
-                                    _,
-                                    unsafe extern "C" fn(*const u8, *const u8, *const u8, *mut u8),
-                                >(join_fn)
-                            },
-                            key_vtable,
-                        });
-                        nodes.insert(*node_id, node);
-                    }
-
-                    Node::Antijoin(antijoin) => {
-                        let node = DataflowNode::Antijoin(Antijoin {
-                            lhs: antijoin.lhs(),
-                            rhs: antijoin.rhs(),
-                        });
-                        nodes.insert(*node_id, node);
-                    }
-
-                    Node::Subgraph(subgraph) => {
-                        let node = DataflowNode::Subgraph(DataflowSubgraph {
-                            edges: subgraph.edges().clone(),
-                            inputs: subgraph.input_nodes().clone(),
-                            nodes: compile_nodes(
-                                subgraph.subgraph(),
-                                vtables,
-                                jit,
-                                node_streams,
-                                node_functions,
-                                layout_cache,
-                            ),
-                            feedback_connections: subgraph.feedback_connections().clone(),
-                        });
-                        nodes.insert(*node_id, node);
-                    }
-
-                    Node::Export(export) => {
-                        let node = DataflowNode::Export(Export {
-                            input: export.input(),
-                        });
-                        nodes.insert(*node_id, node);
-                    }
-
-                    Node::ExportedNode(exported) => {
-                        let node = DataflowNode::Noop(Noop {
-                            input: exported.input(),
-                        });
-                        nodes.insert(*node_id, node);
-                    }
-
-                    Node::ConstantStream(constant) => {
-                        let value = match constant.value().value() {
-                            StreamCollection::Set(set) => {
-                                let key_layout = constant.layout().unwrap_set();
-                                let key_vtable = unsafe { &*vtables[&key_layout] };
-                                let key_layout = layout_cache.layout_of(key_layout);
-
-                                let mut batch = Vec::with_capacity(set.len());
-                                for (literal, diff) in set {
-                                    let key = unsafe {
-                                        row_from_literal(literal, key_vtable, &key_layout)
-                                    };
-
-                                    batch.push((key, *diff));
-                                }
-
-                                // Build a batch from the set's values
-                                let mut batcher = <RowSet as Batch>::Batcher::new_batcher(());
-                                batcher.push_batch(&mut batch);
-                                RowZSet::Set(batcher.seal())
-                            }
-
-                            StreamCollection::Map(map) => {
-                                let (key_layout, value_layout) = constant.layout().unwrap_map();
-                                let (key_vtable, value_vtable) =
-                                    unsafe { (&*vtables[&key_layout], &*vtables[&value_layout]) };
-                                let (key_layout, value_layout) = (
-                                    layout_cache.layout_of(key_layout),
-                                    layout_cache.layout_of(value_layout),
-                                );
-
-                                let mut batch = Vec::with_capacity(map.len());
-                                for (key_literal, value_literal, diff) in map {
-                                    let key = unsafe {
-                                        row_from_literal(key_literal, key_vtable, &key_layout)
-                                    };
-                                    let value = unsafe {
-                                        row_from_literal(value_literal, value_vtable, &value_layout)
-                                    };
-
-                                    batch.push(((key, value), *diff));
-                                }
-
-                                // Build a batch from the set's values
-                                let mut batcher = <RowMap as Batch>::Batcher::new_batcher(());
-                                batcher.push_batch(&mut batch);
-                                RowZSet::Map(batcher.seal())
-                            }
-                        };
-
-                        let node = DataflowNode::Constant(nodes::Constant { value });
-                        nodes.insert(*node_id, node);
-                    }
-                }
-            }
-
-            nodes
-        }
 
         let (jit, native_layout_cache) = codegen.finalize_definitions();
         let vtables = vtables
@@ -1424,6 +688,8 @@ impl CompiledDataflow {
 
                 DataflowNode::Antijoin(antijoin) => self.antijoin(node_id, antijoin, &mut streams),
 
+                DataflowNode::Topk(topk) => self.topk(node_id, topk, &mut streams),
+
                 DataflowNode::Export(_) => todo!(),
 
                 DataflowNode::Constant(constant) => {
@@ -1789,7 +1055,11 @@ impl CompiledDataflow {
                         }
 
                         DataflowNode::Antijoin(antijoin) => {
-                            self.antijoin(node_id, antijoin, &mut substreams)
+                            self.antijoin(node_id, antijoin, &mut substreams);
+                        }
+
+                        DataflowNode::Topk(_topk) => {
+                            unreachable!("topk only works in top level circuits");
                         }
 
                         DataflowNode::Export(export) => {
@@ -2288,6 +1558,38 @@ impl CompiledDataflow {
 
         streams.insert(node_id, RowStream::Map(folded));
     }
+
+    fn topk(
+        &self,
+        node_id: NodeId,
+        topk: Topk,
+        streams: &mut BTreeMap<NodeId, RowStream<RootCircuit>>,
+    ) {
+        let k = topk.k.try_into().expect("topk k overflowed a usize");
+        let topk = match &streams[&topk.input] {
+            RowStream::Set(_input) => {
+                // We get an `OrdIndexedZSet<K, ()>` from this, do we have to convert all of the
+                // `()` values to unit rows or can we just convert the map into a set (which should
+                // be a noop)
+                // ```
+                // let topk = match topk.order {
+                //     TopkOrder::Ascending => input.topk_asc(k),
+                //     TopkOrder::Descending => input.topk_desc(k),
+                // };
+                //
+                // RowStream::Set(topk)
+                // ```
+                todo!("topk set api is kinda funky")
+            }
+
+            RowStream::Map(input) => RowStream::Map(match topk.order {
+                TopkOrder::Ascending => input.topk_asc(k),
+                TopkOrder::Descending => input.topk_desc(k),
+            }),
+        };
+
+        streams.insert(node_id, topk);
+    }
 }
 
 #[inline]
@@ -2303,4 +1605,733 @@ fn cast_uninit_vec<T>(vec: Vec<T>) -> Vec<MaybeUninit<T>> {
 
     // Create a new vec with the different type
     unsafe { Vec::from_raw_parts(ptr.cast::<MaybeUninit<T>>(), len, cap) }
+}
+
+fn collect_functions(
+    codegen: &mut Codegen,
+    functions: &mut BTreeMap<NodeId, Vec<FuncId>>,
+    vtables: &mut BTreeMap<LayoutId, LayoutVTable>,
+    graph: &graph::Subgraph,
+) {
+    for (&node_id, node) in graph.nodes() {
+        match node {
+            Node::Map(map) => {
+                let map_fn = codegen.codegen_func(&format!("map_fn_{node_id}"), map.map_fn());
+                functions.insert(node_id, vec![map_fn]);
+
+                for layout in [map.input_layout(), map.output_layout()] {
+                    match layout {
+                        StreamLayout::Set(key) => {
+                            vtables
+                                .entry(key)
+                                .or_insert_with(|| codegen.vtable_for(key));
+                        }
+
+                        StreamLayout::Map(key, value) => {
+                            vtables
+                                .entry(key)
+                                .or_insert_with(|| codegen.vtable_for(key));
+                            vtables
+                                .entry(value)
+                                .or_insert_with(|| codegen.vtable_for(value));
+                        }
+                    }
+                }
+            }
+
+            Node::Filter(filter) => {
+                let filter_fn =
+                    codegen.codegen_func(&format!("filter_fn_{node_id}"), filter.filter_fn());
+                functions.insert(node_id, vec![filter_fn]);
+            }
+
+            Node::FilterMap(filter_map) => {
+                let fmap_fn = codegen
+                    .codegen_func(&format!("filter_map_fn_{node_id}"), filter_map.filter_map());
+                functions.insert(node_id, vec![fmap_fn]);
+
+                vtables
+                    .entry(filter_map.layout())
+                    .or_insert_with(|| codegen.vtable_for(filter_map.layout()));
+            }
+
+            Node::Fold(fold) => {
+                let step_fn =
+                    codegen.codegen_func(&format!("fold_step_fn_{node_id}"), fold.step_fn());
+                let finish_fn =
+                    codegen.codegen_func(&format!("fold_finish_fn_{node_id}"), fold.finish_fn());
+                functions.insert(node_id, vec![step_fn, finish_fn]);
+
+                for layout in [fold.acc_layout(), fold.step_layout(), fold.output_layout()] {
+                    vtables
+                        .entry(layout)
+                        .or_insert_with(|| codegen.vtable_for(layout));
+                }
+            }
+
+            Node::PartitionedRollingFold(fold) => {
+                let step_fn = codegen.codegen_func(
+                    &format!("partitioned_rolling_fold_step_fn_{node_id}"),
+                    fold.step_fn(),
+                );
+                let finish_fn = codegen.codegen_func(
+                    &format!("partitioned_rolling_fold_finish_fn_{node_id}"),
+                    fold.finish_fn(),
+                );
+                functions.insert(node_id, vec![step_fn, finish_fn]);
+
+                for layout in [fold.acc_layout(), fold.step_layout(), fold.output_layout()] {
+                    vtables
+                        .entry(layout)
+                        .or_insert_with(|| codegen.vtable_for(layout));
+                }
+            }
+
+            Node::FlatMap(flat_map) => {
+                let flat_map_fn =
+                    codegen.codegen_func(&format!("flat_map_fn_{node_id}"), flat_map.flat_map());
+                functions.insert(node_id, vec![flat_map_fn]);
+
+                match flat_map.output_layout() {
+                    StreamLayout::Set(key) => {
+                        vtables
+                            .entry(key)
+                            .or_insert_with(|| codegen.vtable_for(key));
+                    }
+
+                    StreamLayout::Map(key, value) => {
+                        vtables
+                            .entry(key)
+                            .or_insert_with(|| codegen.vtable_for(key));
+                        vtables
+                            .entry(value)
+                            .or_insert_with(|| codegen.vtable_for(value));
+                    }
+                }
+            }
+
+            Node::IndexWith(index_with) => {
+                let index_fn =
+                    codegen.codegen_func(&format!("index_fn_{node_id}"), index_with.index_fn());
+                functions.insert(node_id, vec![index_fn]);
+
+                vtables
+                    .entry(index_with.key_layout())
+                    .or_insert_with(|| codegen.vtable_for(index_with.key_layout()));
+                vtables
+                    .entry(index_with.value_layout())
+                    .or_insert_with(|| codegen.vtable_for(index_with.value_layout()));
+            }
+
+            Node::IndexByColumn(index_by) => {
+                let (owned, borrowed) = codegen.codegen_index_by_column(index_by);
+                functions.insert(node_id, vec![owned, borrowed]);
+
+                vtables
+                    .entry(index_by.key_layout())
+                    .or_insert_with(|| codegen.vtable_for(index_by.key_layout()));
+                vtables
+                    .entry(index_by.value_layout())
+                    .or_insert_with(|| codegen.vtable_for(index_by.value_layout()));
+            }
+
+            Node::Source(source) => {
+                vtables
+                    .entry(source.layout())
+                    .or_insert_with(|| codegen.vtable_for(source.layout()));
+            }
+
+            Node::SourceMap(source) => {
+                vtables
+                    .entry(source.key())
+                    .or_insert_with(|| codegen.vtable_for(source.key()));
+                vtables
+                    .entry(source.value())
+                    .or_insert_with(|| codegen.vtable_for(source.value()));
+            }
+
+            Node::JoinCore(join) => {
+                let join_fn = codegen.codegen_func(&format!("join_fn_{node_id}"), join.join_fn());
+                functions.insert(node_id, vec![join_fn]);
+
+                vtables
+                    .entry(join.key_layout())
+                    .or_insert_with(|| codegen.vtable_for(join.key_layout()));
+                vtables
+                    .entry(join.value_layout())
+                    .or_insert_with(|| codegen.vtable_for(join.value_layout()));
+            }
+
+            Node::MonotonicJoin(join) => {
+                let join_fn =
+                    codegen.codegen_func(&format!("monotonic_join_fn_{node_id}"), join.join_fn());
+                functions.insert(node_id, vec![join_fn]);
+
+                vtables
+                    .entry(join.key_layout())
+                    .or_insert_with(|| codegen.vtable_for(join.key_layout()));
+            }
+
+            Node::Subgraph(subgraph) => {
+                collect_functions(codegen, functions, vtables, subgraph.subgraph());
+            }
+
+            Node::ConstantStream(constant) => match constant.layout() {
+                StreamLayout::Set(key) => {
+                    vtables
+                        .entry(key)
+                        .or_insert_with(|| codegen.vtable_for(key));
+                }
+
+                StreamLayout::Map(key, value) => {
+                    vtables
+                        .entry(key)
+                        .or_insert_with(|| codegen.vtable_for(key));
+                    vtables
+                        .entry(value)
+                        .or_insert_with(|| codegen.vtable_for(value));
+                }
+            },
+
+            Node::UnitMapToSet(map_to_set) => {
+                vtables
+                    .entry(map_to_set.value_layout())
+                    .or_insert_with(|| codegen.vtable_for(map_to_set.value_layout()));
+            }
+
+            Node::Min(_)
+            | Node::Max(_)
+            | Node::Distinct(_)
+            | Node::Delta0(_)
+            | Node::DelayedFeedback(_)
+            | Node::Neg(_)
+            | Node::Sum(_)
+            | Node::Differentiate(_)
+            | Node::Integrate(_)
+            | Node::Sink(_)
+            | Node::Export(_)
+            | Node::ExportedNode(_)
+            | Node::Minus(_)
+            | Node::Antijoin(_)
+            | Node::Topk(_) => {}
+        }
+    }
+}
+
+fn compile_nodes(
+    graph: &graph::Subgraph,
+    vtables: &BTreeMap<LayoutId, *mut VTable>,
+    jit: &JITModule,
+    node_streams: &BTreeMap<NodeId, Option<StreamLayout>>,
+    node_functions: &BTreeMap<NodeId, Vec<FuncId>>,
+    layout_cache: &NativeLayoutCache,
+) -> BTreeMap<NodeId, DataflowNode> {
+    let mut nodes = BTreeMap::new();
+    for (node_id, node) in graph.nodes() {
+        let output = node_streams[node_id];
+
+        match node {
+            Node::Map(map) => {
+                let input = map.input();
+                let map_fn = jit.get_finalized_function(node_functions[node_id][0]);
+
+                let map_fn = unsafe {
+                    match (map.input_layout(), map.output_layout()) {
+                        (StreamLayout::Set(_), StreamLayout::Set(key_layout)) => MapFn::SetSet {
+                            map: transmute(map_fn),
+                            key_vtable: &*vtables[&key_layout],
+                        },
+
+                        (StreamLayout::Set(_), StreamLayout::Map(key_layout, value_layout)) => {
+                            MapFn::SetMap {
+                                map: transmute(map_fn),
+                                key_vtable: &*vtables[&key_layout],
+                                value_vtable: &*vtables[&value_layout],
+                            }
+                        }
+
+                        (StreamLayout::Map(_, _), StreamLayout::Set(key_layout)) => MapFn::MapSet {
+                            map: transmute(map_fn),
+                            key_vtable: &*vtables[&key_layout],
+                        },
+
+                        (StreamLayout::Map(_, _), StreamLayout::Map(key_layout, value_layout)) => {
+                            MapFn::MapMap {
+                                map: transmute(map_fn),
+                                key_vtable: &*vtables[&key_layout],
+                                value_vtable: &*vtables[&value_layout],
+                            }
+                        }
+                    }
+                };
+                let map = DataflowNode::Map(Map { input, map_fn });
+
+                nodes.insert(*node_id, map);
+            }
+
+            Node::Filter(filter) => {
+                let filter_fn = jit.get_finalized_function(node_functions[node_id][0]);
+                let input = filter.input();
+
+                let (filter_fn, layout) = unsafe {
+                    match output.unwrap() {
+                        StreamLayout::Set(key) => {
+                            (FilterFn::Set(transmute(filter_fn)), StreamLayout::Set(key))
+                        }
+                        StreamLayout::Map(key, value) => (
+                            FilterFn::Map(transmute(filter_fn)),
+                            StreamLayout::Map(key, value),
+                        ),
+                    }
+                };
+                let filter = DataflowNode::Filter(Filter {
+                    input,
+                    filter_fn,
+                    layout,
+                });
+
+                nodes.insert(*node_id, filter);
+            }
+
+            Node::FilterMap(filter_map) => {
+                let fmap_fn = jit.get_finalized_function(node_functions[node_id][0]);
+                let input = filter_map.input();
+                let output_vtable = unsafe { &*vtables[&filter_map.layout()] };
+
+                let node = match output.unwrap() {
+                    StreamLayout::Set(_) => DataflowNode::FilterMap(FilterMap {
+                        input,
+                        filter_map: unsafe {
+                            transmute::<_, unsafe extern "C" fn(*const u8, *mut u8) -> bool>(
+                                fmap_fn,
+                            )
+                        },
+                        output_vtable,
+                    }),
+
+                    StreamLayout::Map(..) => DataflowNode::FilterMapIndex(FilterMapIndex {
+                        input,
+                        filter_map: unsafe {
+                            transmute::<
+                                _,
+                                unsafe extern "C" fn(*const u8, *const u8, *mut u8) -> bool,
+                            >(fmap_fn)
+                        },
+                        output_vtable,
+                    }),
+                };
+
+                nodes.insert(*node_id, node);
+            }
+
+            Node::FlatMap(flat_map) => {
+                let flat_map_fn = jit.get_finalized_function(node_functions[node_id][0]);
+                let input_is_map = node_streams[&flat_map.input()].unwrap().is_map();
+                let flat_map = DataflowNode::FlatMap(FlatMap {
+                    input: flat_map.input(),
+                    flat_map: match flat_map.output_layout() {
+                        StreamLayout::Set(key) => {
+                            let key_vtable = unsafe { &*vtables[&key] };
+
+                            if input_is_map {
+                                FlatMapFn::MapSet {
+                                    flat_map: unsafe { transmute(flat_map_fn) },
+                                    key_vtable,
+                                }
+                            } else {
+                                FlatMapFn::SetSet {
+                                    flat_map: unsafe { transmute(flat_map_fn) },
+                                    key_vtable,
+                                }
+                            }
+                        }
+
+                        StreamLayout::Map(key, value) => {
+                            let (key_vtable, value_vtable) =
+                                unsafe { (&*vtables[&key], &*vtables[&value]) };
+
+                            if input_is_map {
+                                FlatMapFn::MapMap {
+                                    flat_map: unsafe { transmute(flat_map_fn) },
+                                    key_vtable,
+                                    value_vtable,
+                                }
+                            } else {
+                                FlatMapFn::SetMap {
+                                    flat_map: unsafe { transmute(flat_map_fn) },
+                                    key_vtable,
+                                    value_vtable,
+                                }
+                            }
+                        }
+                    },
+                });
+                nodes.insert(*node_id, flat_map);
+            }
+
+            Node::Neg(neg) => {
+                nodes.insert(*node_id, DataflowNode::Neg(Neg { input: neg.input() }));
+            }
+
+            Node::Sum(sum) => {
+                nodes.insert(
+                    *node_id,
+                    DataflowNode::Sum(Sum {
+                        inputs: sum.inputs().to_vec(),
+                    }),
+                );
+            }
+
+            Node::Minus(minus) => {
+                nodes.insert(
+                    *node_id,
+                    DataflowNode::Minus(Minus {
+                        lhs: minus.lhs(),
+                        rhs: minus.rhs(),
+                    }),
+                );
+            }
+
+            Node::Fold(fold) => {
+                let (acc_vtable, step_vtable, output_vtable) = unsafe {
+                    (
+                        &*vtables[&fold.acc_layout()],
+                        &*vtables[&fold.step_layout()],
+                        &*vtables[&fold.output_layout()],
+                    )
+                };
+                let acc_layout = layout_cache.layout_of(fold.acc_layout());
+
+                let init = unsafe { row_from_literal(fold.init(), acc_vtable, &acc_layout) };
+
+                let (step_fn, finish_fn) = (
+                    jit.get_finalized_function(node_functions[node_id][0]),
+                    jit.get_finalized_function(node_functions[node_id][1]),
+                );
+
+                let fold = DataflowNode::Fold(Fold {
+                    input: fold.input(),
+                    init,
+                    acc_vtable,
+                    step_vtable,
+                    output_vtable,
+                    step_fn: unsafe { transmute(step_fn) },
+                    finish_fn: unsafe { transmute(finish_fn) },
+                });
+                nodes.insert(*node_id, fold);
+            }
+
+            Node::PartitionedRollingFold(fold) => {
+                let (acc_vtable, step_vtable, output_vtable) = unsafe {
+                    (
+                        &*vtables[&fold.acc_layout()],
+                        &*vtables[&fold.step_layout()],
+                        &*vtables[&fold.output_layout()],
+                    )
+                };
+                let acc_layout = layout_cache.layout_of(fold.acc_layout());
+
+                let init = unsafe { row_from_literal(fold.init(), acc_vtable, &acc_layout) };
+
+                let (step_fn, finish_fn) = (
+                    jit.get_finalized_function(node_functions[node_id][0]),
+                    jit.get_finalized_function(node_functions[node_id][1]),
+                );
+
+                let fold = DataflowNode::PartitionedRollingFold(PartitionedRollingFold {
+                    input: fold.input(),
+                    range: fold.range(),
+                    init,
+                    acc_vtable,
+                    step_vtable,
+                    output_vtable,
+                    step_fn: unsafe { transmute(step_fn) },
+                    finish_fn: unsafe { transmute(finish_fn) },
+                });
+                nodes.insert(*node_id, fold);
+            }
+
+            Node::Sink(sink) => {
+                nodes.insert(
+                    *node_id,
+                    DataflowNode::Sink(Sink {
+                        input: sink.input(),
+                        layout: node_streams[&sink.input()].unwrap(),
+                    }),
+                );
+            }
+
+            Node::Source(source) => {
+                nodes.insert(
+                    *node_id,
+                    DataflowNode::Source(Source {
+                        key_layout: source.layout(),
+                    }),
+                );
+            }
+
+            Node::SourceMap(source) => {
+                nodes.insert(
+                    *node_id,
+                    DataflowNode::SourceMap(SourceMap {
+                        key_layout: source.key(),
+                        value_layout: source.value(),
+                    }),
+                );
+            }
+
+            Node::IndexWith(index) => {
+                let input = index.input();
+                let index_fn = jit.get_finalized_function(node_functions[node_id][0]);
+                let key_vtable = unsafe { &*vtables[&index.key_layout()] };
+                let value_vtable = unsafe { &*vtables[&index.value_layout()] };
+
+                let node = match node_streams[&input].unwrap() {
+                    StreamLayout::Set(_) => DataflowNode::IndexWith(IndexWith {
+                        input,
+                        index_fn: unsafe {
+                            transmute::<_, unsafe extern "C" fn(*const u8, *mut u8, *mut u8)>(
+                                index_fn,
+                            )
+                        },
+                        key_vtable,
+                        value_vtable,
+                    }),
+
+                    StreamLayout::Map(..) => todo!(),
+                };
+
+                nodes.insert(*node_id, node);
+            }
+
+            Node::IndexByColumn(index_by) => {
+                let input = index_by.input();
+                let owned_fn = jit.get_finalized_function(node_functions[node_id][0]);
+                let borrowed_fn = jit.get_finalized_function(node_functions[node_id][1]);
+                let key_vtable = unsafe { &*vtables[&index_by.key_layout()] };
+                let value_vtable = unsafe { &*vtables[&index_by.value_layout()] };
+
+                let node = DataflowNode::IndexByColumn(IndexByColumn {
+                    input,
+                    owned_fn: unsafe { transmute(owned_fn) },
+                    borrowed_fn: unsafe { transmute(borrowed_fn) },
+                    key_vtable,
+                    value_vtable,
+                });
+
+                nodes.insert(*node_id, node);
+            }
+
+            Node::UnitMapToSet(map_to_set) => {
+                nodes.insert(
+                    *node_id,
+                    DataflowNode::UnitMapToSet(UnitMapToSet {
+                        input: map_to_set.input(),
+                    }),
+                );
+            }
+
+            Node::Differentiate(diff) => {
+                nodes.insert(
+                    *node_id,
+                    DataflowNode::Differentiate(Differentiate {
+                        input: diff.input(),
+                    }),
+                );
+            }
+
+            Node::Integrate(integrate) => {
+                nodes.insert(
+                    *node_id,
+                    DataflowNode::Integrate(Integrate {
+                        input: integrate.input(),
+                    }),
+                );
+            }
+
+            Node::Delta0(delta) => {
+                nodes.insert(
+                    *node_id,
+                    DataflowNode::Delta0(Delta0 {
+                        input: delta.input(),
+                    }),
+                );
+            }
+
+            Node::DelayedFeedback(_) => {
+                nodes.insert(*node_id, DataflowNode::DelayedFeedback(DelayedFeedback {}));
+            }
+
+            Node::Min(min) => {
+                nodes.insert(*node_id, DataflowNode::Min(Min { input: min.input() }));
+            }
+
+            Node::Max(max) => {
+                nodes.insert(*node_id, DataflowNode::Max(Max { input: max.input() }));
+            }
+
+            Node::Distinct(distinct) => {
+                nodes.insert(
+                    *node_id,
+                    DataflowNode::Distinct(Distinct {
+                        input: distinct.input(),
+                    }),
+                );
+            }
+
+            Node::JoinCore(join) => {
+                let (lhs, rhs) = (join.lhs(), join.rhs());
+                let join_fn = jit.get_finalized_function(node_functions[node_id][0]);
+                let key_vtable = unsafe { &*vtables[&join.key_layout()] };
+                let value_vtable = unsafe { &*vtables[&join.value_layout()] };
+
+                let node = match (node_streams[&lhs].unwrap(), node_streams[&rhs].unwrap()) {
+                    (StreamLayout::Map(..), StreamLayout::Map(..)) => {
+                        DataflowNode::JoinCore(JoinCore {
+                            lhs,
+                            rhs,
+                            join_fn: unsafe {
+                                transmute::<
+                                    _,
+                                    unsafe extern "C" fn(
+                                        *const u8,
+                                        *const u8,
+                                        *const u8,
+                                        *mut u8,
+                                        *mut u8,
+                                    ),
+                                >(join_fn)
+                            },
+                            key_vtable,
+                            value_vtable,
+                            output_kind: join.result_kind(),
+                        })
+                    }
+
+                    _ => todo!(),
+                };
+
+                nodes.insert(*node_id, node);
+            }
+
+            Node::MonotonicJoin(join) => {
+                let (lhs, rhs) = (join.lhs(), join.rhs());
+                let join_fn = jit.get_finalized_function(node_functions[node_id][0]);
+                let key_vtable = unsafe { &*vtables[&join.key_layout()] };
+
+                let node = DataflowNode::MonotonicJoin(MonotonicJoin {
+                    lhs,
+                    rhs,
+                    join_fn: unsafe {
+                        transmute::<_, unsafe extern "C" fn(*const u8, *const u8, *const u8, *mut u8)>(
+                            join_fn,
+                        )
+                    },
+                    key_vtable,
+                });
+                nodes.insert(*node_id, node);
+            }
+
+            Node::Antijoin(antijoin) => {
+                let node = DataflowNode::Antijoin(Antijoin {
+                    lhs: antijoin.lhs(),
+                    rhs: antijoin.rhs(),
+                });
+                nodes.insert(*node_id, node);
+            }
+
+            Node::Topk(topk) => {
+                let node = DataflowNode::Topk(Topk {
+                    input: topk.input(),
+                    k: topk.k(),
+                    order: topk.order(),
+                });
+                nodes.insert(*node_id, node);
+            }
+
+            Node::Subgraph(subgraph) => {
+                let node = DataflowNode::Subgraph(DataflowSubgraph {
+                    edges: subgraph.edges().clone(),
+                    inputs: subgraph.input_nodes().clone(),
+                    nodes: compile_nodes(
+                        subgraph.subgraph(),
+                        vtables,
+                        jit,
+                        node_streams,
+                        node_functions,
+                        layout_cache,
+                    ),
+                    feedback_connections: subgraph.feedback_connections().clone(),
+                });
+                nodes.insert(*node_id, node);
+            }
+
+            Node::Export(export) => {
+                let node = DataflowNode::Export(Export {
+                    input: export.input(),
+                });
+                nodes.insert(*node_id, node);
+            }
+
+            Node::ExportedNode(exported) => {
+                let node = DataflowNode::Noop(Noop {
+                    input: exported.input(),
+                });
+                nodes.insert(*node_id, node);
+            }
+
+            Node::ConstantStream(constant) => {
+                let value = match constant.value().value() {
+                    StreamCollection::Set(set) => {
+                        let key_layout = constant.layout().unwrap_set();
+                        let key_vtable = unsafe { &*vtables[&key_layout] };
+                        let key_layout = layout_cache.layout_of(key_layout);
+
+                        let mut batch = Vec::with_capacity(set.len());
+                        for (literal, diff) in set {
+                            let key = unsafe { row_from_literal(literal, key_vtable, &key_layout) };
+
+                            batch.push((key, *diff));
+                        }
+
+                        // Build a batch from the set's values
+                        let mut batcher = <RowSet as Batch>::Batcher::new_batcher(());
+                        batcher.push_batch(&mut batch);
+                        RowZSet::Set(batcher.seal())
+                    }
+
+                    StreamCollection::Map(map) => {
+                        let (key_layout, value_layout) = constant.layout().unwrap_map();
+                        let (key_vtable, value_vtable) =
+                            unsafe { (&*vtables[&key_layout], &*vtables[&value_layout]) };
+                        let (key_layout, value_layout) = (
+                            layout_cache.layout_of(key_layout),
+                            layout_cache.layout_of(value_layout),
+                        );
+
+                        let mut batch = Vec::with_capacity(map.len());
+                        for (key_literal, value_literal, diff) in map {
+                            let key =
+                                unsafe { row_from_literal(key_literal, key_vtable, &key_layout) };
+                            let value = unsafe {
+                                row_from_literal(value_literal, value_vtable, &value_layout)
+                            };
+
+                            batch.push(((key, value), *diff));
+                        }
+
+                        // Build a batch from the set's values
+                        let mut batcher = <RowMap as Batch>::Batcher::new_batcher(());
+                        batcher.push_batch(&mut batch);
+                        RowZSet::Map(batcher.seal())
+                    }
+                };
+
+                let node = DataflowNode::Constant(nodes::Constant { value });
+                nodes.insert(*node_id, node);
+            }
+        }
+    }
+
+    nodes
 }
