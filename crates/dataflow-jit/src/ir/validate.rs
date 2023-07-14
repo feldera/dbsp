@@ -1361,11 +1361,11 @@ impl FunctionValidator {
             }
 
             "dbsp.str.parse" => {
-                if call.args().len() != 2 {
+                if call.args().len() != 1 {
                     return Err(ValidationError::IncorrectFunctionArgLen {
                         expr_id,
                         function: call.function().to_owned(),
-                        expected_args: 2,
+                        expected_args: 1,
                         args: call.args().len(),
                     });
                 }
@@ -1376,8 +1376,6 @@ impl FunctionValidator {
                         actual_arg_types[0],
                     );
                 }
-
-                assert_eq!(call.ret_ty(), ColumnType::String);
             }
 
             "dbsp.io.str.print" => {

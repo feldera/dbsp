@@ -44,7 +44,8 @@ public class JITConstantOperator extends JITOperator {
         ObjectNode data = result.putObject("ConstantStream");
         this.addComment(data, comment);
         this.type.addDescriptionTo(data, "layout");
-        data.set("value", this.value.asJson());
+        BaseJsonNode valueJson = this.value.asJson();
+        data.set("value", valueJson);
         data.put("consolidated", false);
         return result;
     }

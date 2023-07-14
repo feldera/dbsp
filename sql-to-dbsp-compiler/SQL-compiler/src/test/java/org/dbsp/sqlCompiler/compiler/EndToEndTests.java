@@ -573,7 +573,7 @@ public class EndToEndTests extends BaseSQLTests {
 
     @Test
     public void divZero() {
-        String query = "SELECT 'Infinity' / 0";
+        String query = "SELECT 'zero' / 0";
         this.testQuery(query, new DBSPZSetLiteral.Contents(
                 new DBSPTupleExpression(
                         new DBSPDecimalLiteral(DBSPTypeDecimal.DEFAULT_NULLABLE,

@@ -60,7 +60,7 @@ public class PostgresDateTests extends PostgresBaseTest {
 
     @Test
     public void testSelect() {
-        this.queryWithOutput("SELECT f1 FROM DATE_TBL;\n" +
+        this.q("SELECT f1 FROM DATE_TBL;\n" +
                 "f1\n" +
                 "---------------\n" +
                 "04-09-1957\n" +
@@ -83,7 +83,7 @@ public class PostgresDateTests extends PostgresBaseTest {
 
     @Test
     public void testLt() {
-        this.queryWithOutput("SELECT f1 FROM DATE_TBL WHERE f1 < '2000-01-01';\n" +
+        this.q("SELECT f1 FROM DATE_TBL WHERE f1 < '2000-01-01';\n" +
                 " f1       \n" +
                 "---------------\n" +
                 " 04-09-1957\n" +
@@ -100,7 +100,7 @@ public class PostgresDateTests extends PostgresBaseTest {
 
     @Test
     public void testBetween() {
-        this.queryWithOutput("SELECT f1 FROM DATE_TBL\n" +
+        this.q("SELECT f1 FROM DATE_TBL\n" +
                 "  WHERE f1 BETWEEN '2000-01-01' AND '2001-01-01';\n" +
                 " f1\n" +
                 "----------------\n" +
@@ -904,7 +904,7 @@ public class PostgresDateTests extends PostgresBaseTest {
 
     @Test
     public void testDiff() {
-        this.queryWithOutput("SELECT (f1 - date '2000-01-01') day AS \"Days From 2K\" FROM DATE_TBL;\n" +
+        this.q("SELECT (f1 - date '2000-01-01') day AS \"Days From 2K\" FROM DATE_TBL;\n" +
                 " Days From 2K \n" +
                 "--------------\n" +
                 "       -15607\n" +
@@ -986,7 +986,7 @@ public class PostgresDateTests extends PostgresBaseTest {
         // Deleted 'Julian' column
         // Incremented DOW column
         // Added null row
-        this.queryWithOutput("SELECT f1 as \"date\",\n" +
+        this.q("SELECT f1 as \"date\",\n" +
                         "    EXTRACT(YEAR from f1) AS 'year',\n" +
                         "    EXTRACT(month from f1) AS 'month',\n" +
                         "    EXTRACT(day from f1) AS 'day',\n" +
@@ -1025,7 +1025,7 @@ public class PostgresDateTests extends PostgresBaseTest {
 
     @Test
     public void testEpoch() {
-        this.queryWithOutput("SELECT EXTRACT(EPOCH FROM DATE '1970-01-01');\n" +
+        this.q("SELECT EXTRACT(EPOCH FROM DATE '1970-01-01');\n" +
                 " extract \n" +
                 "---------\n" +
                 "       0");
@@ -1033,7 +1033,7 @@ public class PostgresDateTests extends PostgresBaseTest {
 
     @Test
     public void testCentury() {
-        this.queryWithOutput("SELECT EXTRACT(CENTURY FROM DATE '0001-01-01');\n" +
+        this.q("SELECT EXTRACT(CENTURY FROM DATE '0001-01-01');\n" +
                 " extract \n" +
                 "---------\n" +
                 "       1");
@@ -1041,7 +1041,7 @@ public class PostgresDateTests extends PostgresBaseTest {
 
     @Test
     public void testCentury1() {
-        this.queryWithOutput("SELECT EXTRACT(CENTURY FROM DATE '1900-12-31');\n" +
+        this.q("SELECT EXTRACT(CENTURY FROM DATE '1900-12-31');\n" +
                 " extract \n" +
                 "---------\n" +
                 "      19");
@@ -1049,7 +1049,7 @@ public class PostgresDateTests extends PostgresBaseTest {
 
     @Test
     public void testCentury2() {
-        this.queryWithOutput("SELECT EXTRACT(CENTURY FROM DATE '1901-01-01');\n" +
+        this.q("SELECT EXTRACT(CENTURY FROM DATE '1901-01-01');\n" +
                 " extract \n" +
                 "---------\n" +
                 "      20");
@@ -1057,7 +1057,7 @@ public class PostgresDateTests extends PostgresBaseTest {
 
     @Test
     public void testCentury3() {
-        this.queryWithOutput("SELECT EXTRACT(CENTURY FROM DATE '2000-12-31');\n" +
+        this.q("SELECT EXTRACT(CENTURY FROM DATE '2000-12-31');\n" +
                 " extract \n" +
                 "---------\n" +
                 "      20");
@@ -1065,7 +1065,7 @@ public class PostgresDateTests extends PostgresBaseTest {
 
     @Test
     public void testCentury4() {
-        this.queryWithOutput("SELECT EXTRACT(CENTURY FROM DATE '2001-01-01');\n" +
+        this.q("SELECT EXTRACT(CENTURY FROM DATE '2001-01-01');\n" +
                 " extract \n" +
                 "---------\n" +
                 "      21");
@@ -1073,7 +1073,7 @@ public class PostgresDateTests extends PostgresBaseTest {
 
     @Test
     public void testMillennium() {
-        this.queryWithOutput("SELECT EXTRACT(MILLENNIUM FROM DATE '0001-01-01');\n" +
+        this.q("SELECT EXTRACT(MILLENNIUM FROM DATE '0001-01-01');\n" +
                 " extract \n" +
                 "---------\n" +
                 "       1");
@@ -1081,7 +1081,7 @@ public class PostgresDateTests extends PostgresBaseTest {
 
     @Test
     public void testMillennium1() {
-        this.queryWithOutput("SELECT EXTRACT(MILLENNIUM FROM DATE '1000-12-31');\n" +
+        this.q("SELECT EXTRACT(MILLENNIUM FROM DATE '1000-12-31');\n" +
                 " extract \n" +
                 "---------\n" +
                 "       1");
@@ -1089,7 +1089,7 @@ public class PostgresDateTests extends PostgresBaseTest {
 
     @Test
     public void testMillennium2() {
-        this.queryWithOutput("SELECT EXTRACT(MILLENNIUM FROM DATE '2000-12-31');\n" +
+        this.q("SELECT EXTRACT(MILLENNIUM FROM DATE '2000-12-31');\n" +
                 " extract \n" +
                 "---------\n" +
                 "       2");
@@ -1100,7 +1100,7 @@ public class PostgresDateTests extends PostgresBaseTest {
 
     @Test
     public void testMillennium3() {
-        this.queryWithOutput("SELECT EXTRACT(MILLENNIUM FROM DATE '2001-01-01');\n" +
+        this.q("SELECT EXTRACT(MILLENNIUM FROM DATE '2001-01-01');\n" +
                 " extract \n" +
                 "---------\n" +
                 "       3");
@@ -1108,7 +1108,7 @@ public class PostgresDateTests extends PostgresBaseTest {
 
     @Test
     public void testDecade() {
-        this.queryWithOutput("SELECT EXTRACT(DECADE FROM DATE '1994-12-25');\n" +
+        this.q("SELECT EXTRACT(DECADE FROM DATE '1994-12-25');\n" +
                 " extract \n" +
                 "---------\n" +
                 "     199");
@@ -1116,7 +1116,7 @@ public class PostgresDateTests extends PostgresBaseTest {
 
     @Test
     public void testDecade1() {
-        this.queryWithOutput("SELECT EXTRACT(DECADE FROM DATE '0010-01-01');\n" +
+        this.q("SELECT EXTRACT(DECADE FROM DATE '0010-01-01');\n" +
                 " extract \n" +
                 "---------\n" +
                 "       1");
@@ -1124,7 +1124,7 @@ public class PostgresDateTests extends PostgresBaseTest {
 
     @Test
     public void testDecade2() {
-        this.queryWithOutput("SELECT EXTRACT(DECADE FROM DATE '0009-12-31');\n" +
+        this.q("SELECT EXTRACT(DECADE FROM DATE '0009-12-31');\n" +
                 " extract \n" +
                 "---------\n" +
                 "       0");
@@ -1132,7 +1132,7 @@ public class PostgresDateTests extends PostgresBaseTest {
 
     @Test
     public void testMicroseconds() {
-        this.queryWithOutput("SELECT EXTRACT(MICROSECOND FROM DATE '2020-08-11');\n" +
+        this.q("SELECT EXTRACT(MICROSECOND FROM DATE '2020-08-11');\n" +
                 " extract \n" +
                 "---------\n" +
                 "       0");
@@ -1152,7 +1152,7 @@ public class PostgresDateTests extends PostgresBaseTest {
 
     @Test
     public void testMilliseconds() {
-        this.queryWithOutput("SELECT EXTRACT(MILLISECOND FROM DATE '2020-08-11');\n" +
+        this.q("SELECT EXTRACT(MILLISECOND FROM DATE '2020-08-11');\n" +
                 " extract \n" +
                 "---------\n" +
                 "       0");
@@ -1160,7 +1160,7 @@ public class PostgresDateTests extends PostgresBaseTest {
 
     @Test
     public void testSeconds() {
-        this.queryWithOutput("SELECT EXTRACT(SECOND FROM DATE '2020-08-11');\n" +
+        this.q("SELECT EXTRACT(SECOND FROM DATE '2020-08-11');\n" +
                 " extract \n" +
                 "---------\n" +
                 "       0");
@@ -1168,7 +1168,7 @@ public class PostgresDateTests extends PostgresBaseTest {
 
     @Test
     public void testSeconds0() {
-        this.queryWithOutput("SELECT SECOND(DATE '2020-08-11');\n" +
+        this.q("SELECT SECOND(DATE '2020-08-11');\n" +
                 " extract \n" +
                 "---------\n" +
                 "       0");
@@ -1176,7 +1176,7 @@ public class PostgresDateTests extends PostgresBaseTest {
 
     @Test
     public void testMinutes() {
-        this.queryWithOutput("SELECT EXTRACT(MINUTE FROM DATE '2020-08-11');\n" +
+        this.q("SELECT EXTRACT(MINUTE FROM DATE '2020-08-11');\n" +
                 " extract \n" +
                 "---------\n" +
                 "       0");
@@ -1184,7 +1184,7 @@ public class PostgresDateTests extends PostgresBaseTest {
 
     @Test
     public void testMinutes1() {
-        this.queryWithOutput("SELECT MINUTE(DATE '2020-08-11');\n" +
+        this.q("SELECT MINUTE(DATE '2020-08-11');\n" +
                 " extract \n" +
                 "---------\n" +
                 "       0");
@@ -1192,7 +1192,7 @@ public class PostgresDateTests extends PostgresBaseTest {
 
     @Test
     public void testHour() {
-        this.queryWithOutput("SELECT EXTRACT(HOUR FROM DATE '2020-08-11');\n" +
+        this.q("SELECT EXTRACT(HOUR FROM DATE '2020-08-11');\n" +
                 " extract \n" +
                 "---------\n" +
                 "       0");
@@ -1200,7 +1200,7 @@ public class PostgresDateTests extends PostgresBaseTest {
 
     @Test
     public void testHour1() {
-        this.queryWithOutput("SELECT HOUR(DATE '2020-08-11');\n" +
+        this.q("SELECT HOUR(DATE '2020-08-11');\n" +
                 " extract \n" +
                 "---------\n" +
                 "       0");
@@ -1208,7 +1208,7 @@ public class PostgresDateTests extends PostgresBaseTest {
 
     @Test
     public void testDay() {
-        this.queryWithOutput("SELECT EXTRACT(DAY FROM DATE '2020-08-11');\n" +
+        this.q("SELECT EXTRACT(DAY FROM DATE '2020-08-11');\n" +
                 " extract \n" +
                 "---------\n" +
                 "       11");
@@ -1216,7 +1216,7 @@ public class PostgresDateTests extends PostgresBaseTest {
 
     @Test
     public void testDay1() {
-        this.queryWithOutput("SELECT DAYOFMONTH(DATE '2020-08-11');\n" +
+        this.q("SELECT DAYOFMONTH(DATE '2020-08-11');\n" +
                 " extract \n" +
                 "---------\n" +
                 "       11");
@@ -1224,7 +1224,7 @@ public class PostgresDateTests extends PostgresBaseTest {
 
     @Test
     public void testMonth() {
-        this.queryWithOutput("SELECT EXTRACT(MONTH FROM DATE '2020-08-11');\n" +
+        this.q("SELECT EXTRACT(MONTH FROM DATE '2020-08-11');\n" +
                 " extract \n" +
                 "---------\n" +
                 "       8");
@@ -1232,7 +1232,7 @@ public class PostgresDateTests extends PostgresBaseTest {
 
     @Test
     public void testMonth1() {
-        this.queryWithOutput("SELECT MONTH(DATE '2020-08-11');\n" +
+        this.q("SELECT MONTH(DATE '2020-08-11');\n" +
                 " extract \n" +
                 "---------\n" +
                 "       8");
@@ -1240,7 +1240,7 @@ public class PostgresDateTests extends PostgresBaseTest {
 
     @Test
     public void testYear() {
-        this.queryWithOutput("SELECT EXTRACT(YEAR FROM DATE '2020-08-11');\n" +
+        this.q("SELECT EXTRACT(YEAR FROM DATE '2020-08-11');\n" +
                 " extract \n" +
                 "---------\n" +
                 "     2020");
@@ -1248,7 +1248,7 @@ public class PostgresDateTests extends PostgresBaseTest {
 
     @Test
     public void testYear1() {
-        this.queryWithOutput("SELECT YEAR(DATE '2020-08-11');\n" +
+        this.q("SELECT YEAR(DATE '2020-08-11');\n" +
                 " extract \n" +
                 "---------\n" +
                 "     2020");
@@ -1256,7 +1256,7 @@ public class PostgresDateTests extends PostgresBaseTest {
 
     @Test
     public void testDecade5() {
-        this.queryWithOutput("SELECT EXTRACT(DECADE FROM DATE '2020-08-11');\n" +
+        this.q("SELECT EXTRACT(DECADE FROM DATE '2020-08-11');\n" +
                 " extract \n" +
                 "---------\n" +
                 "     202");
@@ -1264,7 +1264,7 @@ public class PostgresDateTests extends PostgresBaseTest {
 
     @Test
     public void testCentury5() {
-        this.queryWithOutput("SELECT EXTRACT(CENTURY FROM DATE '2020-08-11');\n" +
+        this.q("SELECT EXTRACT(CENTURY FROM DATE '2020-08-11');\n" +
                 " extract \n" +
                 "---------\n" +
                 "     21");
@@ -1272,7 +1272,7 @@ public class PostgresDateTests extends PostgresBaseTest {
 
     @Test
     public void testMillennium5() {
-        this.queryWithOutput("SELECT EXTRACT(MILLENNIUM FROM DATE '2020-08-11');\n" +
+        this.q("SELECT EXTRACT(MILLENNIUM FROM DATE '2020-08-11');\n" +
                 " extract \n" +
                 "---------\n" +
                 "     3");
@@ -1280,7 +1280,7 @@ public class PostgresDateTests extends PostgresBaseTest {
 
     @Test
     public void testIsoYear() {
-        this.queryWithOutput("SELECT EXTRACT(ISOYEAR FROM DATE '2020-08-11');\n" +
+        this.q("SELECT EXTRACT(ISOYEAR FROM DATE '2020-08-11');\n" +
                 " extract \n" +
                 "---------\n" +
                 "     2020");
@@ -1288,7 +1288,7 @@ public class PostgresDateTests extends PostgresBaseTest {
 
     @Test
     public void testQuarter() {
-        this.queryWithOutput("SELECT EXTRACT(QUARTER FROM DATE '2020-08-11');\n" +
+        this.q("SELECT EXTRACT(QUARTER FROM DATE '2020-08-11');\n" +
                 " extract \n" +
                 "---------\n" +
                 "     3");
@@ -1296,7 +1296,7 @@ public class PostgresDateTests extends PostgresBaseTest {
 
     @Test
     public void testWeek() {
-        this.queryWithOutput("SELECT EXTRACT(WEEK FROM DATE '2020-08-11');\n" +
+        this.q("SELECT EXTRACT(WEEK FROM DATE '2020-08-11');\n" +
                 " extract \n" +
                 "---------\n" +
                 "     33");
@@ -1304,7 +1304,7 @@ public class PostgresDateTests extends PostgresBaseTest {
 
     @Test
     public void testDow() {
-        this.queryWithOutput("SELECT EXTRACT(DOW FROM DATE '2020-08-11');\n" +
+        this.q("SELECT EXTRACT(DOW FROM DATE '2020-08-11');\n" +
                 " extract \n" +
                 "---------\n" +
                 "     3");
@@ -1312,7 +1312,7 @@ public class PostgresDateTests extends PostgresBaseTest {
 
     @Test
     public void testDow2() {
-        this.queryWithOutput("SELECT DAYOFWEEK(DATE '2020-08-11');\n" +
+        this.q("SELECT DAYOFWEEK(DATE '2020-08-11');\n" +
                 " extract \n" +
                 "---------\n" +
                 "     3");
@@ -1325,7 +1325,7 @@ public class PostgresDateTests extends PostgresBaseTest {
     @Test
     public void testDow1() {
         // Sunday
-        this.queryWithOutput("SELECT EXTRACT(DOW FROM DATE '2020-08-16');\n" +
+        this.q("SELECT EXTRACT(DOW FROM DATE '2020-08-16');\n" +
                 " extract \n" +
                 "---------\n" +
                 "     1");
@@ -1333,7 +1333,7 @@ public class PostgresDateTests extends PostgresBaseTest {
 
     @Test
     public void testIsoDow() {
-        this.queryWithOutput("SELECT EXTRACT(ISODOW FROM DATE '2020-08-16');\n" +
+        this.q("SELECT EXTRACT(ISODOW FROM DATE '2020-08-16');\n" +
                 " extract \n" +
                 "---------\n" +
                 "     7");
@@ -1341,7 +1341,7 @@ public class PostgresDateTests extends PostgresBaseTest {
 
     @Test
     public void testDoy() {
-        this.queryWithOutput("SELECT EXTRACT(DOY FROM DATE '2020-08-11');\n" +
+        this.q("SELECT EXTRACT(DOY FROM DATE '2020-08-11');\n" +
                 " extract \n" +
                 "---------\n" +
                 "     224");
@@ -1358,7 +1358,7 @@ public class PostgresDateTests extends PostgresBaseTest {
             "now waiting for https://issues.apache.org/jira/projects/CALCITE/issues/CALCITE-5760")
     public void testDateTrunc() {
         // In the BigQuery library there is a DATE_TRUNC, but arguments are swapped
-        this.queryWithOutput("SELECT DATE_TRUNC(DATE '1970-03-20', MILLENNIUM);\n" +
+        this.q("SELECT DATE_TRUNC(DATE '1970-03-20', MILLENNIUM);\n" +
                 "date_trunc        \n" +
                 "--------------------------\n" +
                 " Thu Jan 01 00:00:00 1001");
@@ -1443,7 +1443,7 @@ public class PostgresDateTests extends PostgresBaseTest {
     @Test(expected = RuntimeException.class)
     // Calcite does not seem to support infinity dates
     public void testInfinity() {
-        this.queryWithOutput("SELECT DATE 'infinity';\n");
+        this.q("SELECT DATE 'infinity';\n");
     }
 
     // Calcite does not support make_date

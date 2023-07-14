@@ -215,6 +215,8 @@ public class CalciteCompiler implements IWritesLogs {
         rootSchema.add("INT64", factory -> factory.createSqlType(SqlTypeName.BIGINT));
         rootSchema.add("FLOAT64", factory -> factory.createSqlType(SqlTypeName.DOUBLE));
         rootSchema.add("FLOAT32", factory -> factory.createSqlType(SqlTypeName.FLOAT));
+        rootSchema.add("FLOAT4", factory -> factory.createSqlType(SqlTypeName.FLOAT));
+        rootSchema.add("FLOAT8", factory -> factory.createSqlType(SqlTypeName.DOUBLE));
         rootSchema.add("STRING", factory -> factory.createSqlType(SqlTypeName.VARCHAR));
         rootSchema.add("TEXT", factory -> factory.createSqlType(SqlTypeName.VARCHAR));
         rootSchema.add("BOOL", factory -> factory.createSqlType(SqlTypeName.BOOLEAN));

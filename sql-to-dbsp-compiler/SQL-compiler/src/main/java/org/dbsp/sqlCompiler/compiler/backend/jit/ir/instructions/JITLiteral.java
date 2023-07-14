@@ -26,6 +26,7 @@ package org.dbsp.sqlCompiler.compiler.backend.jit.ir.instructions;
 import com.fasterxml.jackson.databind.node.BaseJsonNode;
 import com.fasterxml.jackson.databind.node.BigIntegerNode;
 import com.fasterxml.jackson.databind.node.BooleanNode;
+import com.fasterxml.jackson.databind.node.DecimalNode;
 import com.fasterxml.jackson.databind.node.DoubleNode;
 import com.fasterxml.jackson.databind.node.FloatNode;
 import com.fasterxml.jackson.databind.node.IntNode;
@@ -78,7 +79,8 @@ public class JITLiteral extends JITValue {
         } else {
             value = result.putObject("NonNull");
         }
-        value.set(this.type.toString(), this.getValueAsJson());
+        BaseJsonNode jsonValue = this.getValueAsJson();
+        value.set(this.type.toString(), jsonValue);
         return result;
     }
 
@@ -98,8 +100,7 @@ public class JITLiteral extends JITValue {
         } else if (this.literal.is(DBSPFloatLiteral.class)) {
             return isNull ? new FloatNode(0.0F) : new FloatNode(this.literal.to(DBSPFloatLiteral.class).value);
         } else if (this.literal.is(DBSPDecimalLiteral.class)) {
-            return isNull ? new BigIntegerNode(BigInteger.ZERO) :
-                    new BigIntegerNode(this.literal.to(DBSPDecimalLiteral.class).value.toBigInteger());
+            return isNull ? DecimalNode.ZERO : new DecimalNode(this.literal.to(DBSPDecimalLiteral.class).value);
         } else if (this.literal.is(DBSPTimestampLiteral.class)) {
             String value = "";
             if (!isNull) {

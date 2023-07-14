@@ -734,14 +734,15 @@ public class ToJitInnerVisitor extends InnerVisitor implements IWritesLogs {
             this.map(expression, result);
             return VisitDecision.STOP;
         }
+        DBSPType leftType = expression.left.getType();
         if (expression.operation.equals(DBSPOpcode.DIV) &&
-                expression.left.getType().is(DBSPTypeInteger.class)) {
+                (leftType.is(DBSPTypeInteger.class) || leftType.is(DBSPTypeDecimal.class))) {
             // left / right
             JITInstructionPair left = this.accept(expression.left);
             JITInstructionPair right = this.accept(expression.right);
 
             // division by 0 returns null.
-            IsNumericType numeric = expression.left.getType().to(IsNumericType.class);
+            IsNumericType numeric = leftType.to(IsNumericType.class);
             JITScalarType type = convertScalarType(expression.left);
             // TODO: replace with uninit
             DBSPLiteral numericZero = numeric.getZero();

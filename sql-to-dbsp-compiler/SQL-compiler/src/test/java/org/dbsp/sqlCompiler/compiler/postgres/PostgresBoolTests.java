@@ -8,18 +8,18 @@ import org.junit.Test;
 public class PostgresBoolTests extends PostgresBaseTest {
     @Test
     public void testOne() {
-        this.queryWithOutput("SELECT 1 as 'one';\n" + " one \n" +
+        this.q("SELECT 1 as 'one';\n" + " one \n" +
                 "-----\n" +
                 "   1");
     }
 
     @Test
     public void testFalse() {
-        this.queryWithOutput("SELECT true AS true;\n" +
+        this.q("SELECT true AS true;\n" +
                 " true \n" +
                 "------\n" +
                 " t");
-        this.queryWithOutput("SELECT false AS false;\n" +
+        this.q("SELECT false AS false;\n" +
                 " false \n" +
                 "-------\n" +
                 " f");

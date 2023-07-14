@@ -2,15 +2,19 @@
 
 We support standard IEEE 754 floating point types.
 
-`double` is a 64-bit standard FP value.
+`double` is a 64-bit standard FP value.  Accepted synonyms are
+`float8` and `float64`.
 
-`float` is a 32-bit standard FP value.
+`float` is a 32-bit standard FP value.  Accepted synonyms are
+`float4`, and `float32`.
 
 Floating point values include special values, such as `NaN` (not a
-number), `-Infinity`, and `-Infinity`.  An alternative spelling
-for `-Infinity` is `-inf`, and an alternative spelling for
-`Infinity` is `inf`.  When written as SQL literals, these values
-have to be surrounded by simple quotes: `'inf'`.
+number), `-Infinity`, and `-Infinity`.  An alternative spelling for
+`-Infinity` is `-inf`, and an alternative spelling for `Infinity` is
+`inf`, and an alternative spelling for 'NaN' is 'nan'.  When written
+as SQL literals, these values have to be surrounded by simple quotes:
+`'inf'`.  Please note that these strings are case-sensitive and spaces
+are ignored.
 
 Infinity plus any finite value equals Infinity, as does Infinity plus
 Infinity.  Infinity minus `Infinity` yields `NaN`.
@@ -30,6 +34,9 @@ Division or modulus by zero return `NaN`.
 
 Casting a string to a floating-point value will produce the value
 `0` when parsing fails.
+
+Casting a value that is out of the supported range to a floating
+point type will produce a value that is `inf` or `-inf`.
 
 Please note that numeric values with a decimal point have the
 `decimal` type by default.  To write a floating-point literal you have

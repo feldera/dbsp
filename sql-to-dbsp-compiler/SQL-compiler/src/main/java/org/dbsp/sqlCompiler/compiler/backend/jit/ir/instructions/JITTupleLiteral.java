@@ -53,8 +53,10 @@ public class JITTupleLiteral extends JITValue {
         ObjectNode result = jsonFactory().createObjectNode();
         // Should this be called "columns"?
         ArrayNode rows = result.putArray("rows");
-        for (JITLiteral literal: this.fields)
-            rows.add(literal.asJson());
+        for (JITLiteral literal: this.fields) {
+            BaseJsonNode value = literal.asJson();
+            rows.add(value);
+        }
         return result;
     }
 

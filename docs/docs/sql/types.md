@@ -2,23 +2,24 @@
 
 The compiler supports the following SQL data types:
 
-- `BOOLEAN`, represented as a Boolean value
+- `BOOLEAN`, or `BOOL`, represented as a Boolean value
 - `TINYINT`, represented as an 8-bit signed integer using two's
-  complement
-- `SMALLINT`, represented as a 16-bit signed integer using two's
-  complement
-- `INTEGER`, or `INT`, represented as a 32-bit signed integer,
+  complement.
+- `SMALLINT`, or `INT2`, represented as a 16-bit signed integer using two's
+  complement.
+- `INTEGER`, or `INT`, or `SIGNED`, or `INT4`, represented as a 32-bit signed integer,
   using two's complement
-- `BIGINT`, represented as a 64-bit signed integer, using two's
+- `BIGINT`, or `INT64`, represented as a 64-bit signed integer, using two's
   complement
-- `DECIMAL(precision, scale)`, a high precision fixed-point type,
+- `DECIMAL(precision, scale)`, or `NUMERIC(precision, scale)`,
+  a high precision fixed-point type,
   with a precision (number of decimal digits after decimal point) and
   a scale (total number of decimall digits)
-- `NUMERIC(precision, scale)`, another name for `DECIMAL`
-- `FLOAT`, an IEEE 32-bit floating point number
-- `DOUBLE`, an IEEE 64-bit floating point number
+- `FLOAT`, or `FLOAT4`, or `FLOAT32`, an IEEE 32-bit floating point number
+- `DOUBLE`, or `FLOAT8`, or `FLOAT32`, an IEEE 64-bit floating point number
 - `VARCHAR(n)`, or `CHAR(n)`, or `CHARACTER(n)`, or `CHARACTER
   VARYING(n)`, a string value with maximum fixed width
+- `VARCHAR`, or `STRING`, or `TEXT`: a string of unlimited length
 - `NULL`, a type comprising only the `NULL` value
 - `INTERVAL`, a SQL interval.  Two types of intervals are supported:
   long intervals (comprising years and months), and short intervals,

@@ -16,7 +16,7 @@ public class JitPostgresDateTest extends PostgresDateTests {
 
     @Test @Ignore("No support for intervals https://github.com/feldera/dbsp/issues/309")
     public void testDiff() {
-        this.queryWithOutput("SELECT (f1 - date '2000-01-01') day AS \"Days From 2K\" FROM DATE_TBL;\n" +
+        this.q("SELECT (f1 - date '2000-01-01') day AS \"Days From 2K\" FROM DATE_TBL;\n" +
                 " Days From 2K \n" +
                 "--------------\n" +
                 "       -15607\n" +
@@ -39,7 +39,7 @@ public class JitPostgresDateTest extends PostgresDateTests {
 
     @Test @Ignore("No support for date constants https://github.com/feldera/dbsp/issues/340")
     public void testLt() {
-        this.queryWithOutput("SELECT f1 FROM DATE_TBL WHERE f1 < '2000-01-01';\n" +
+        this.q("SELECT f1 FROM DATE_TBL WHERE f1 < '2000-01-01';\n" +
                 " f1       \n" +
                 "---------------\n" +
                 " 04-09-1957\n" +
@@ -56,7 +56,7 @@ public class JitPostgresDateTest extends PostgresDateTests {
 
     @Test @Ignore("No support for date constants https://github.com/feldera/dbsp/issues/340")
     public void testBetween() {
-        this.queryWithOutput("SELECT f1 FROM DATE_TBL\n" +
+        this.q("SELECT f1 FROM DATE_TBL\n" +
                 "  WHERE f1 BETWEEN '2000-01-01' AND '2001-01-01';\n" +
                 " f1\n" +
                 "----------------\n" +
@@ -67,7 +67,7 @@ public class JitPostgresDateTest extends PostgresDateTests {
 
     @Test @Ignore("No support for date constants https://github.com/feldera/dbsp/issues/340")
     public void testEpoch() {
-        this.queryWithOutput("SELECT EXTRACT(EPOCH FROM DATE '1970-01-01');\n" +
+        this.q("SELECT EXTRACT(EPOCH FROM DATE '1970-01-01');\n" +
                 " extract \n" +
                 "---------\n" +
                 "       0");
@@ -75,7 +75,7 @@ public class JitPostgresDateTest extends PostgresDateTests {
 
     @Test @Ignore("No support for date constants https://github.com/feldera/dbsp/issues/340")
     public void testCentury() {
-        this.queryWithOutput("SELECT EXTRACT(CENTURY FROM DATE '0001-01-01');\n" +
+        this.q("SELECT EXTRACT(CENTURY FROM DATE '0001-01-01');\n" +
                 " extract \n" +
                 "---------\n" +
                 "       1");
@@ -83,7 +83,7 @@ public class JitPostgresDateTest extends PostgresDateTests {
 
     @Test @Ignore("No support for date constants https://github.com/feldera/dbsp/issues/340")
     public void testCentury1() {
-        this.queryWithOutput("SELECT EXTRACT(CENTURY FROM DATE '1900-12-31');\n" +
+        this.q("SELECT EXTRACT(CENTURY FROM DATE '1900-12-31');\n" +
                 " extract \n" +
                 "---------\n" +
                 "      19");
@@ -91,7 +91,7 @@ public class JitPostgresDateTest extends PostgresDateTests {
 
     @Test @Ignore("No support for date constants https://github.com/feldera/dbsp/issues/340")
     public void testCentury2() {
-        this.queryWithOutput("SELECT EXTRACT(CENTURY FROM DATE '1901-01-01');\n" +
+        this.q("SELECT EXTRACT(CENTURY FROM DATE '1901-01-01');\n" +
                 " extract \n" +
                 "---------\n" +
                 "      20");
@@ -99,7 +99,7 @@ public class JitPostgresDateTest extends PostgresDateTests {
 
     @Test @Ignore("No support for date constants https://github.com/feldera/dbsp/issues/340")
     public void testCentury3() {
-        this.queryWithOutput("SELECT EXTRACT(CENTURY FROM DATE '2000-12-31');\n" +
+        this.q("SELECT EXTRACT(CENTURY FROM DATE '2000-12-31');\n" +
                 " extract \n" +
                 "---------\n" +
                 "      20");
@@ -107,7 +107,7 @@ public class JitPostgresDateTest extends PostgresDateTests {
 
     @Test @Ignore("No support for date constants https://github.com/feldera/dbsp/issues/340")
     public void testCentury4() {
-        this.queryWithOutput("SELECT EXTRACT(CENTURY FROM DATE '2001-01-01');\n" +
+        this.q("SELECT EXTRACT(CENTURY FROM DATE '2001-01-01');\n" +
                 " extract \n" +
                 "---------\n" +
                 "      21");
@@ -115,7 +115,7 @@ public class JitPostgresDateTest extends PostgresDateTests {
 
     @Test @Ignore("No support for date constants https://github.com/feldera/dbsp/issues/340")
     public void testMillennium() {
-        this.queryWithOutput("SELECT EXTRACT(MILLENNIUM FROM DATE '0001-01-01');\n" +
+        this.q("SELECT EXTRACT(MILLENNIUM FROM DATE '0001-01-01');\n" +
                 " extract \n" +
                 "---------\n" +
                 "       1");
@@ -123,7 +123,7 @@ public class JitPostgresDateTest extends PostgresDateTests {
 
     @Test @Ignore("No support for date constants https://github.com/feldera/dbsp/issues/340")
     public void testMillennium1() {
-        this.queryWithOutput("SELECT EXTRACT(MILLENNIUM FROM DATE '1000-12-31');\n" +
+        this.q("SELECT EXTRACT(MILLENNIUM FROM DATE '1000-12-31');\n" +
                 " extract \n" +
                 "---------\n" +
                 "       1");
@@ -131,7 +131,7 @@ public class JitPostgresDateTest extends PostgresDateTests {
 
     @Test @Ignore("No support for date constants https://github.com/feldera/dbsp/issues/340")
     public void testMillennium2() {
-        this.queryWithOutput("SELECT EXTRACT(MILLENNIUM FROM DATE '2000-12-31');\n" +
+        this.q("SELECT EXTRACT(MILLENNIUM FROM DATE '2000-12-31');\n" +
                 " extract \n" +
                 "---------\n" +
                 "       2");
@@ -142,7 +142,7 @@ public class JitPostgresDateTest extends PostgresDateTests {
 
     @Test @Ignore("No support for date constants https://github.com/feldera/dbsp/issues/340")
     public void testMillennium3() {
-        this.queryWithOutput("SELECT EXTRACT(MILLENNIUM FROM DATE '2001-01-01');\n" +
+        this.q("SELECT EXTRACT(MILLENNIUM FROM DATE '2001-01-01');\n" +
                 " extract \n" +
                 "---------\n" +
                 "       3");
@@ -150,7 +150,7 @@ public class JitPostgresDateTest extends PostgresDateTests {
 
     @Test @Ignore("No support for date constants https://github.com/feldera/dbsp/issues/340")
     public void testDecade() {
-        this.queryWithOutput("SELECT EXTRACT(DECADE FROM DATE '1994-12-25');\n" +
+        this.q("SELECT EXTRACT(DECADE FROM DATE '1994-12-25');\n" +
                 " extract \n" +
                 "---------\n" +
                 "     199");
@@ -158,7 +158,7 @@ public class JitPostgresDateTest extends PostgresDateTests {
 
     @Test @Ignore("No support for date constants https://github.com/feldera/dbsp/issues/340")
     public void testDecade1() {
-        this.queryWithOutput("SELECT EXTRACT(DECADE FROM DATE '0010-01-01');\n" +
+        this.q("SELECT EXTRACT(DECADE FROM DATE '0010-01-01');\n" +
                 " extract \n" +
                 "---------\n" +
                 "       1");
@@ -166,7 +166,7 @@ public class JitPostgresDateTest extends PostgresDateTests {
 
     @Test @Ignore("No support for date constants https://github.com/feldera/dbsp/issues/340")
     public void testDecade2() {
-        this.queryWithOutput("SELECT EXTRACT(DECADE FROM DATE '0009-12-31');\n" +
+        this.q("SELECT EXTRACT(DECADE FROM DATE '0009-12-31');\n" +
                 " extract \n" +
                 "---------\n" +
                 "       0");
@@ -174,7 +174,7 @@ public class JitPostgresDateTest extends PostgresDateTests {
 
     @Test @Ignore("No support for date constants https://github.com/feldera/dbsp/issues/340")
     public void testMicroseconds() {
-        this.queryWithOutput("SELECT EXTRACT(MICROSECOND  FROM DATE '2020-08-11');\n" +
+        this.q("SELECT EXTRACT(MICROSECOND  FROM DATE '2020-08-11');\n" +
                 " extract \n" +
                 "---------\n" +
                 "       0");
@@ -194,7 +194,7 @@ public class JitPostgresDateTest extends PostgresDateTests {
 
     @Test @Ignore("No support for date constants https://github.com/feldera/dbsp/issues/340")
     public void testMilliseconds() {
-        this.queryWithOutput("SELECT EXTRACT(MILLISECOND  FROM DATE '2020-08-11');\n" +
+        this.q("SELECT EXTRACT(MILLISECOND  FROM DATE '2020-08-11');\n" +
                 " extract \n" +
                 "---------\n" +
                 "       0");
@@ -202,7 +202,7 @@ public class JitPostgresDateTest extends PostgresDateTests {
 
     @Test @Ignore("No support for date constants https://github.com/feldera/dbsp/issues/340")
     public void testSeconds() {
-        this.queryWithOutput("SELECT EXTRACT(SECOND        FROM DATE '2020-08-11');\n" +
+        this.q("SELECT EXTRACT(SECOND        FROM DATE '2020-08-11');\n" +
                 " extract \n" +
                 "---------\n" +
                 "       0");
@@ -210,7 +210,7 @@ public class JitPostgresDateTest extends PostgresDateTests {
 
     @Test @Ignore("No support for date constants https://github.com/feldera/dbsp/issues/340")
     public void testSeconds0() {
-        this.queryWithOutput("SELECT SECOND(DATE '2020-08-11');\n" +
+        this.q("SELECT SECOND(DATE '2020-08-11');\n" +
                 " extract \n" +
                 "---------\n" +
                 "       0");
@@ -218,7 +218,7 @@ public class JitPostgresDateTest extends PostgresDateTests {
 
     @Test @Ignore("No support for date constants https://github.com/feldera/dbsp/issues/340")
     public void testMinutes() {
-        this.queryWithOutput("SELECT EXTRACT(MINUTE FROM DATE '2020-08-11');\n" +
+        this.q("SELECT EXTRACT(MINUTE FROM DATE '2020-08-11');\n" +
                 " extract \n" +
                 "---------\n" +
                 "       0");
@@ -226,7 +226,7 @@ public class JitPostgresDateTest extends PostgresDateTests {
 
     @Test @Ignore("No support for date constants https://github.com/feldera/dbsp/issues/340")
     public void testMinutes1() {
-        this.queryWithOutput("SELECT MINUTE(DATE '2020-08-11');\n" +
+        this.q("SELECT MINUTE(DATE '2020-08-11');\n" +
                 " extract \n" +
                 "---------\n" +
                 "       0");
@@ -234,7 +234,7 @@ public class JitPostgresDateTest extends PostgresDateTests {
 
     @Test @Ignore("No support for date constants https://github.com/feldera/dbsp/issues/340")
     public void testHour() {
-        this.queryWithOutput("SELECT EXTRACT(HOUR          FROM DATE '2020-08-11');\n" +
+        this.q("SELECT EXTRACT(HOUR          FROM DATE '2020-08-11');\n" +
                 " extract \n" +
                 "---------\n" +
                 "       0");
@@ -242,7 +242,7 @@ public class JitPostgresDateTest extends PostgresDateTests {
 
     @Test @Ignore("No support for date constants https://github.com/feldera/dbsp/issues/340")
     public void testHour1() {
-        this.queryWithOutput("SELECT HOUR(DATE '2020-08-11');\n" +
+        this.q("SELECT HOUR(DATE '2020-08-11');\n" +
                 " extract \n" +
                 "---------\n" +
                 "       0");
@@ -250,7 +250,7 @@ public class JitPostgresDateTest extends PostgresDateTests {
 
     @Test @Ignore("No support for date constants https://github.com/feldera/dbsp/issues/340")
     public void testDay() {
-        this.queryWithOutput("SELECT EXTRACT(DAY           FROM DATE '2020-08-11');\n" +
+        this.q("SELECT EXTRACT(DAY           FROM DATE '2020-08-11');\n" +
                 " extract \n" +
                 "---------\n" +
                 "       11");
@@ -258,7 +258,7 @@ public class JitPostgresDateTest extends PostgresDateTests {
 
     @Test @Ignore("No support for date constants https://github.com/feldera/dbsp/issues/340")
     public void testDay1() {
-        this.queryWithOutput("SELECT DAYOFMONTH(DATE '2020-08-11');\n" +
+        this.q("SELECT DAYOFMONTH(DATE '2020-08-11');\n" +
                 " extract \n" +
                 "---------\n" +
                 "       11");
@@ -266,7 +266,7 @@ public class JitPostgresDateTest extends PostgresDateTests {
 
     @Test @Ignore("No support for date constants https://github.com/feldera/dbsp/issues/340")
     public void testMonth() {
-        this.queryWithOutput("SELECT EXTRACT(MONTH         FROM DATE '2020-08-11');\n" +
+        this.q("SELECT EXTRACT(MONTH         FROM DATE '2020-08-11');\n" +
                 " extract \n" +
                 "---------\n" +
                 "       8");
@@ -274,7 +274,7 @@ public class JitPostgresDateTest extends PostgresDateTests {
 
     @Test @Ignore("No support for date constants https://github.com/feldera/dbsp/issues/340")
     public void testMonth1() {
-        this.queryWithOutput("SELECT MONTH(DATE '2020-08-11');\n" +
+        this.q("SELECT MONTH(DATE '2020-08-11');\n" +
                 " extract \n" +
                 "---------\n" +
                 "       8");
@@ -282,7 +282,7 @@ public class JitPostgresDateTest extends PostgresDateTests {
 
     @Test @Ignore("No support for date constants https://github.com/feldera/dbsp/issues/340")
     public void testYear() {
-        this.queryWithOutput("SELECT EXTRACT(YEAR          FROM DATE '2020-08-11');\n" +
+        this.q("SELECT EXTRACT(YEAR          FROM DATE '2020-08-11');\n" +
                 " extract \n" +
                 "---------\n" +
                 "     2020");
@@ -290,7 +290,7 @@ public class JitPostgresDateTest extends PostgresDateTests {
 
     @Test @Ignore("No support for date constants https://github.com/feldera/dbsp/issues/340")
     public void testYear1() {
-        this.queryWithOutput("SELECT YEAR(DATE '2020-08-11');\n" +
+        this.q("SELECT YEAR(DATE '2020-08-11');\n" +
                 " extract \n" +
                 "---------\n" +
                 "     2020");
@@ -298,7 +298,7 @@ public class JitPostgresDateTest extends PostgresDateTests {
 
     @Test @Ignore("No support for date constants https://github.com/feldera/dbsp/issues/340")
     public void testDecade5() {
-        this.queryWithOutput("SELECT EXTRACT(DECADE        FROM DATE '2020-08-11');\n" +
+        this.q("SELECT EXTRACT(DECADE        FROM DATE '2020-08-11');\n" +
                 " extract \n" +
                 "---------\n" +
                 "     202");
@@ -306,7 +306,7 @@ public class JitPostgresDateTest extends PostgresDateTests {
 
     @Test @Ignore("No support for date constants https://github.com/feldera/dbsp/issues/340")
     public void testCentury5() {
-        this.queryWithOutput("SELECT EXTRACT(CENTURY       FROM DATE '2020-08-11');\n" +
+        this.q("SELECT EXTRACT(CENTURY       FROM DATE '2020-08-11');\n" +
                 " extract \n" +
                 "---------\n" +
                 "     21");
@@ -314,7 +314,7 @@ public class JitPostgresDateTest extends PostgresDateTests {
 
     @Test @Ignore("No support for date constants https://github.com/feldera/dbsp/issues/340")
     public void testMillennium5() {
-        this.queryWithOutput("SELECT EXTRACT(MILLENNIUM    FROM DATE '2020-08-11');\n" +
+        this.q("SELECT EXTRACT(MILLENNIUM    FROM DATE '2020-08-11');\n" +
                 " extract \n" +
                 "---------\n" +
                 "     3");
@@ -322,7 +322,7 @@ public class JitPostgresDateTest extends PostgresDateTests {
 
     @Test @Ignore("No support for date constants https://github.com/feldera/dbsp/issues/340")
     public void testIsoYear() {
-        this.queryWithOutput("SELECT EXTRACT(ISOYEAR       FROM DATE '2020-08-11');\n" +
+        this.q("SELECT EXTRACT(ISOYEAR       FROM DATE '2020-08-11');\n" +
                 " extract \n" +
                 "---------\n" +
                 "     2020");
@@ -330,7 +330,7 @@ public class JitPostgresDateTest extends PostgresDateTests {
 
     @Test @Ignore("No support for date constants https://github.com/feldera/dbsp/issues/340")
     public void testQuarter() {
-        this.queryWithOutput("SELECT EXTRACT(QUARTER       FROM DATE '2020-08-11');\n" +
+        this.q("SELECT EXTRACT(QUARTER       FROM DATE '2020-08-11');\n" +
                 " extract \n" +
                 "---------\n" +
                 "     3");
@@ -338,7 +338,7 @@ public class JitPostgresDateTest extends PostgresDateTests {
 
     @Test @Ignore("No support for date constants https://github.com/feldera/dbsp/issues/340")
     public void testWeek() {
-        this.queryWithOutput("SELECT EXTRACT(WEEK          FROM DATE '2020-08-11');\n" +
+        this.q("SELECT EXTRACT(WEEK          FROM DATE '2020-08-11');\n" +
                 " extract \n" +
                 "---------\n" +
                 "     33");
@@ -346,7 +346,7 @@ public class JitPostgresDateTest extends PostgresDateTests {
 
     @Test @Ignore("No support for date constants https://github.com/feldera/dbsp/issues/340")
     public void testDow() {
-        this.queryWithOutput("SELECT EXTRACT(DOW           FROM DATE '2020-08-11');\n" +
+        this.q("SELECT EXTRACT(DOW           FROM DATE '2020-08-11');\n" +
                 " extract \n" +
                 "---------\n" +
                 "     3");
@@ -354,7 +354,7 @@ public class JitPostgresDateTest extends PostgresDateTests {
 
     @Test @Ignore("No support for date constants https://github.com/feldera/dbsp/issues/340")
     public void testDow2() {
-        this.queryWithOutput("SELECT DAYOFWEEK(DATE '2020-08-11');\n" +
+        this.q("SELECT DAYOFWEEK(DATE '2020-08-11');\n" +
                 " extract \n" +
                 "---------\n" +
                 "     3");
@@ -367,7 +367,7 @@ public class JitPostgresDateTest extends PostgresDateTests {
     @Test @Ignore("No support for date constants https://github.com/feldera/dbsp/issues/340")
     public void testDow1() {
         // Sunday
-        this.queryWithOutput("SELECT EXTRACT(DOW FROM DATE '2020-08-16');\n" +
+        this.q("SELECT EXTRACT(DOW FROM DATE '2020-08-16');\n" +
                 " extract \n" +
                 "---------\n" +
                 "     1");
@@ -375,7 +375,7 @@ public class JitPostgresDateTest extends PostgresDateTests {
 
     @Test @Ignore("No support for date constants https://github.com/feldera/dbsp/issues/340")
     public void testIsoDow() {
-        this.queryWithOutput("SELECT EXTRACT(ISODOW FROM DATE '2020-08-16');\n" +
+        this.q("SELECT EXTRACT(ISODOW FROM DATE '2020-08-16');\n" +
                 " extract \n" +
                 "---------\n" +
                 "     7");
@@ -383,7 +383,7 @@ public class JitPostgresDateTest extends PostgresDateTests {
 
     @Test @Ignore("No support for date constants https://github.com/feldera/dbsp/issues/340")
     public void testDoy() {
-        this.queryWithOutput("SELECT EXTRACT(DOY           FROM DATE '2020-08-11');\n" +
+        this.q("SELECT EXTRACT(DOY           FROM DATE '2020-08-11');\n" +
                 " extract \n" +
                 "---------\n" +
                 "     224");
@@ -391,7 +391,7 @@ public class JitPostgresDateTest extends PostgresDateTests {
 
     @Test @Ignore("Overflow in epoch https://github.com/feldera/dbsp/issues/342")
     public void testExtract() {
-        this.queryWithOutput(
+        this.q(
                 "SELECT f1 as \"date\",\n" +
                 "    EXTRACT(YEAR from f1) AS 'year',\n" +
                 "    EXTRACT(month from f1) AS 'month',\n" +

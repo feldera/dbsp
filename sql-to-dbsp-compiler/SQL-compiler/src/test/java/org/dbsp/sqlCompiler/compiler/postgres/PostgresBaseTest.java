@@ -14,6 +14,7 @@ import org.dbsp.sqlCompiler.ir.expression.literal.DBSPBoolLiteral;
 import org.dbsp.sqlCompiler.ir.expression.literal.DBSPDateLiteral;
 import org.dbsp.sqlCompiler.ir.expression.literal.DBSPDecimalLiteral;
 import org.dbsp.sqlCompiler.ir.expression.literal.DBSPDoubleLiteral;
+import org.dbsp.sqlCompiler.ir.expression.literal.DBSPFloatLiteral;
 import org.dbsp.sqlCompiler.ir.expression.literal.DBSPI16Literal;
 import org.dbsp.sqlCompiler.ir.expression.literal.DBSPI32Literal;
 import org.dbsp.sqlCompiler.ir.expression.literal.DBSPI64Literal;
@@ -29,7 +30,8 @@ import org.dbsp.sqlCompiler.ir.type.primitive.DBSPTypeBaseType;
 import org.dbsp.sqlCompiler.ir.type.primitive.DBSPTypeBool;
 import org.dbsp.sqlCompiler.ir.type.primitive.DBSPTypeDate;
 import org.dbsp.sqlCompiler.ir.type.primitive.DBSPTypeDecimal;
-import org.dbsp.sqlCompiler.ir.type.primitive.DBSPTypeFP;
+import org.dbsp.sqlCompiler.ir.type.primitive.DBSPTypeDouble;
+import org.dbsp.sqlCompiler.ir.type.primitive.DBSPTypeFloat;
 import org.dbsp.sqlCompiler.ir.type.primitive.DBSPTypeInteger;
 import org.dbsp.sqlCompiler.ir.type.primitive.DBSPTypeMillisInterval;
 import org.dbsp.sqlCompiler.ir.type.primitive.DBSPTypeString;
@@ -41,6 +43,8 @@ import java.nio.charset.StandardCharsets;
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
 import java.util.Date;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 public abstract class PostgresBaseTest extends BaseSQLTests {
     /**
@@ -155,9 +159,12 @@ public abstract class PostgresBaseTest extends BaseSQLTests {
                     continue;
                 }
                 DBSPExpression columnValue;
-                if (fieldType.is(DBSPTypeFP.class)) {
+                if (fieldType.is(DBSPTypeDouble.class)) {
                     double value = Double.parseDouble(column);
                     columnValue = new DBSPDoubleLiteral(value, fieldType.mayBeNull);
+                } else if (fieldType.is(DBSPTypeFloat.class)) {
+                    float value = Float.parseFloat(column);
+                    columnValue = new DBSPFloatLiteral(value, fieldType.mayBeNull);
                 } else if (fieldType.is(DBSPTypeDecimal.class)) {
                     BigDecimal value = new BigDecimal(column);
                     columnValue = new DBSPDecimalLiteral(fieldType, value);
@@ -233,7 +240,7 @@ public abstract class PostgresBaseTest extends BaseSQLTests {
      * Runs two test cases, one with optimizations and one without.
      * This makes sure that constant queries still exercise the runtime.
      */
-    public void queryWithOutput(String queryAndOutput) {
+    public void q(String queryAndOutput) {
         int semicolon = queryAndOutput.indexOf(';');
         if (semicolon < 0)
             throw new RuntimeException("Could not parse query and output");
@@ -241,5 +248,36 @@ public abstract class PostgresBaseTest extends BaseSQLTests {
         String expected = queryAndOutput.substring(semicolon + 1);
         this.compare(query, expected, true);
         this.compare(query, expected, false);
+    }
+
+    /**
+     * Test a sequence of queries, each followed by its expected output.
+     * Two queries are separated by a whitespace line.
+     * Here is an example legal input:
+     * SELECT f.* FROM FLOAT4_TBL f WHERE f.f1 = '1004.3';
+     *    f1
+     * --------
+     *  1004.3
+     * (1 row)
+     *
+     * SELECT f.* FROM FLOAT4_TBL f WHERE '1004.3' > f.f1;
+     *       f1
+     * ---------------
+     *              0
+     *         -34.84
+     *  1.2345679e-20
+     * (3 rows)
+     */
+    public void qs(String queriesWithOutputs) {
+        String[] parts = queriesWithOutputs.split("\n\n");
+        // From each part drop the last line (N rows) *and* its last newline.
+        Pattern regex = Pattern.compile("^(.*)\\n\\(\\d+ rows\\)$", Pattern.DOTALL);
+        for (String part: parts) {
+            Matcher regexMatcher = regex.matcher(part);
+            if (regexMatcher.find()) {
+                String result = regexMatcher.group(1);
+                this.q(result);
+            }
+        }
     }
 }

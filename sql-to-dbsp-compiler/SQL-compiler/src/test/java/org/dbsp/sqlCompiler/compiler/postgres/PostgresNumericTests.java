@@ -26,6 +26,7 @@ package org.dbsp.sqlCompiler.compiler.postgres;
 import org.dbsp.sqlCompiler.circuit.DBSPCircuit;
 import org.dbsp.sqlCompiler.compiler.InputOutputPair;
 import org.dbsp.sqlCompiler.compiler.backend.DBSPCompiler;
+import org.dbsp.sqlCompiler.compiler.frontend.CalciteObject;
 import org.dbsp.sqlCompiler.ir.expression.literal.DBSPZSetLiteral;
 import org.dbsp.sqlCompiler.ir.type.DBSPTypeTuple;
 import org.dbsp.sqlCompiler.ir.type.primitive.DBSPTypeDecimal;
@@ -37,21 +38,21 @@ import org.junit.Test;
  * Tests manually adapted from
  * https://github.com/postgres/postgres/blob/master/src/test/regress/expected/numeric.out
  */
-@SuppressWarnings("ALL")
+@SuppressWarnings("JavadocLinkAsPlainText")
 public class PostgresNumericTests extends PostgresBaseTest {
-    protected static final int width = 25;
+    protected static final int WIDTH = 25;
 
     @Override
     public void prepareData(DBSPCompiler compiler) {
-        String createTables = "CREATE TABLE num_data (id int4, val numeric(" + width + ",10));\n" +
-                "CREATE TABLE num_exp_add (id1 int4, id2 int4, expected numeric(" + width + ",10));\n" +
-                "CREATE TABLE num_exp_sub (id1 int4, id2 int4, expected numeric(" + width + ",10));\n" +
-                "CREATE TABLE num_exp_div (id1 int4, id2 int4, expected numeric(" + width + ",10));\n" +
-                "CREATE TABLE num_exp_mul (id1 int4, id2 int4, expected numeric(" + width + ",10));\n" +
-                "CREATE TABLE num_exp_sqrt (id int4, expected numeric(" + width + ",10));\n" +
-                "CREATE TABLE num_exp_ln (id int4, expected numeric(" + width + ",10));\n" +
-                "CREATE TABLE num_exp_log10 (id int4, expected numeric(" + width + ",10));\n" +
-                "CREATE TABLE num_exp_power_10_ln (id int4, expected numeric(" + width + ",10));\n";
+        String createTables = "CREATE TABLE num_data (id int4, val numeric(" + WIDTH + ",10));\n" +
+                "CREATE TABLE num_exp_add (id1 int4, id2 int4, expected numeric(" + WIDTH + ",10));\n" +
+                "CREATE TABLE num_exp_sub (id1 int4, id2 int4, expected numeric(" + WIDTH + ",10));\n" +
+                "CREATE TABLE num_exp_div (id1 int4, id2 int4, expected numeric(" + WIDTH + ",10));\n" +
+                "CREATE TABLE num_exp_mul (id1 int4, id2 int4, expected numeric(" + WIDTH + ",10));\n" +
+                "CREATE TABLE num_exp_sqrt (id int4, expected numeric(" + WIDTH + ",10));\n" +
+                "CREATE TABLE num_exp_ln (id int4, expected numeric(" + WIDTH + ",10));\n" +
+                "CREATE TABLE num_exp_log10 (id int4, expected numeric(" + WIDTH + ",10));\n" +
+                "CREATE TABLE num_exp_power_10_ln (id int4, expected numeric(" + WIDTH + ",10));\n";
         String insert =
                 "INSERT INTO num_exp_add VALUES (0,0,'0');\n" +
                 "INSERT INTO num_exp_sub VALUES (0,0,'0');\n" +
@@ -526,8 +527,8 @@ public class PostgresNumericTests extends PostgresBaseTest {
                         DBSPZSetLiteral.Contents.emptyWithElementType(new DBSPTypeTuple(
                     DBSPTypeInteger.SIGNED_32,
                     DBSPTypeInteger.SIGNED_64,
-                    new DBSPTypeDecimal(null, width, 10, false),
-                    new DBSPTypeDecimal(null, width, 10, false))
+                    new DBSPTypeDecimal(CalciteObject.EMPTY, WIDTH, 10, false),
+                    new DBSPTypeDecimal(CalciteObject.EMPTY, WIDTH, 10, false))
                 )}
         );
         this.addRustTestCase(last, compiler, circuit, streams);
@@ -536,7 +537,7 @@ public class PostgresNumericTests extends PostgresBaseTest {
     @Test
     public void testAdd() {
         String intermediate = "CREATE VIEW num_result AS SELECT t1.id AS ID1, t2.id as ID2, "  +
-                "CAST(t1.val + t2.val AS NUMERIC(" + width + ", 10)) AS results\n" +
+                "CAST(t1.val + t2.val AS NUMERIC(" + WIDTH + ", 10)) AS results\n" +
                 "    FROM num_data t1, num_data t2";
         String last = "CREATE VIEW E AS SELECT t1.id1, t1.id2, t1.results, t2.expected\n" +
                 "    FROM num_result t1, num_exp_add t2\n" +
@@ -548,7 +549,7 @@ public class PostgresNumericTests extends PostgresBaseTest {
     @Test
     public void testRoundAdd() {
         String intermediate = "CREATE VIEW num_result AS SELECT t1.id AS ID1, t2.id AS ID2, " +
-                "CAST(round(t1.val + t2.val, 10) AS NUMERIC(" + width + ", 10)) AS results\n" +
+                "CAST(round(t1.val + t2.val, 10) AS NUMERIC(" + WIDTH + ", 10)) AS results\n" +
                 "    FROM num_data t1, num_data t2";
         String last = "CREATE VIEW E AS SELECT t1.id1, t1.id2, t1.results, round(t2.expected, 10) as expected\n" +
                 "    FROM num_result t1, num_exp_add t2\n" +
@@ -560,7 +561,7 @@ public class PostgresNumericTests extends PostgresBaseTest {
     @Test
     public void testSubtraction() {
         String intermediate = "CREATE VIEW num_result AS SELECT t1.id AS ID1, t2.id AS ID2, " +
-                "CAST(t1.val - t2.val AS NUMERIC(" + width + ", 10)) AS results\n" +
+                "CAST(t1.val - t2.val AS NUMERIC(" + WIDTH + ", 10)) AS results\n" +
                 "    FROM num_data t1, num_data t2";
         String last = "CREATE VIEW E AS SELECT t1.id1, t1.id2, t1.results, t2.expected\n" +
                 "    FROM num_result t1, num_exp_sub t2\n" +
@@ -572,7 +573,7 @@ public class PostgresNumericTests extends PostgresBaseTest {
     @Test
     public void testRoundSubtraction() {
         String intermediate = "CREATE VIEW num_result AS SELECT t1.id AS ID1, t2.id AS ID2, " +
-                "CAST(ROUND(t1.val - t2.val, 40) AS NUMERIC(" + width + ",10)) AS results\n" +
+                "CAST(ROUND(t1.val - t2.val, 40) AS NUMERIC(" + WIDTH + ",10)) AS results\n" +
                 "    FROM num_data t1, num_data t2";
         String last = "CREATE VIEW E AS SELECT t1.id1, t1.id2, t1.results, round(t2.expected, 40)\n" +
                 "    FROM num_result t1, num_exp_sub t2\n" +
@@ -584,7 +585,7 @@ public class PostgresNumericTests extends PostgresBaseTest {
     @Test
     public void testMultiply() {
         String intermediate = "CREATE VIEW num_result AS SELECT t1.id AS ID1, t2.id AS ID2, " +
-                "CAST(t1.val * t2.val AS NUMERIC(" + width + ",10)) AS results\n" +
+                "CAST(t1.val * t2.val AS NUMERIC(" + WIDTH + ",10)) AS results\n" +
                 "    FROM num_data t1, num_data t2";
         String last = "CREATE VIEW E AS SELECT t1.id1, t1.id2, t1.results, t2.expected\n" +
                 "    FROM num_result t1, num_exp_mul t2\n" +
@@ -596,7 +597,7 @@ public class PostgresNumericTests extends PostgresBaseTest {
     @Test
     public void testRoundMultiply() {
         String intermediate = "CREATE VIEW num_result AS SELECT t1.id AS ID1, t2.id AS ID2, " +
-                "CAST(round(t1.val * t2.val, 30) AS NUMERIC(" + width + ", 10)) AS results\n" +
+                "CAST(round(t1.val * t2.val, 30) AS NUMERIC(" + WIDTH + ", 10)) AS results\n" +
                 "    FROM num_data t1, num_data t2";
         String last = "CREATE VIEW E AS SELECT t1.id1, t1.id2, t1.results, round(t2.expected, 30)\n" +
                 "    FROM num_result t1, num_exp_mul t2\n" +
@@ -608,7 +609,7 @@ public class PostgresNumericTests extends PostgresBaseTest {
     @Test
     public void testDivision() {
         String intermediate = "CREATE VIEW num_result AS SELECT t1.id AS ID1, t2.id AS ID2, " +
-                "CAST(t1.val / t2.val AS NUMERIC(" + width + ", 10)) AS results\n" +
+                "CAST(t1.val / t2.val AS NUMERIC(" + WIDTH + ", 10)) AS results\n" +
                 "    FROM num_data t1, num_data t2";
         String last = "CREATE VIEW E AS SELECT t1.id1, t1.id2, t1.results, t2.expected\n" +
                 "    FROM num_result t1, num_exp_div t2\n" +
@@ -620,7 +621,7 @@ public class PostgresNumericTests extends PostgresBaseTest {
     @Test
     public void testDivisionRound() {
         String intermediate = "CREATE VIEW num_result AS SELECT t1.id AS ID1, t2.id AS ID2, " +
-                "CAST(round(t1.val / t2.val, 10) AS NUMERIC(" + width + ", 10)) AS results\n" +
+                "CAST(round(t1.val / t2.val, 10) AS NUMERIC(" + WIDTH + ", 10)) AS results\n" +
                 "    FROM num_data t1, num_data t2";
         String last = "CREATE VIEW E AS SELECT t1.id1, t1.id2, t1.results, round(t2.expected, 10)\n" +
                 "    FROM num_result t1, num_exp_div t2\n" +
@@ -632,7 +633,7 @@ public class PostgresNumericTests extends PostgresBaseTest {
     @Test
     public void squareRootTest() {
         String intermediate = "CREATE VIEW num_result AS SELECT id AS ID1, 0 as ID2, CAST(SQRT(ABS(val)) AS NUMERIC(" +
-                    width + ", 10)) AS results\n" +
+                WIDTH + ", 10)) AS results\n" +
                 "    FROM num_data\n";
         String last = "CREATE VIEW E AS SELECT t1.id1, t1.results, t2.expected\n" +
                 "    FROM num_result t1, num_exp_sqrt t2\n" +
@@ -644,7 +645,7 @@ public class PostgresNumericTests extends PostgresBaseTest {
     @Test
     public void logarithmTest() {
         String intermediate = "CREATE VIEW num_result AS SELECT id AS ID1, 0, CAST(LN(ABS(val)) AS NUMERIC(" +
-                width + ", 10)) AS results\n" +
+                WIDTH + ", 10)) AS results\n" +
                 "    FROM num_data\n" +
                 "    WHERE val != '0.0'";
         String last = "CREATE VIEW E AS SELECT t1.id1, t1.results, t2.expected\n" +
@@ -657,7 +658,7 @@ public class PostgresNumericTests extends PostgresBaseTest {
     @Test
     public void logarithm10Test() {
         String intermediate = "CREATE VIEW num_result AS SELECT id AS ID1, 0, CAST(LOG10(ABS(val)) AS NUMERIC(" +
-                width + ", 10)) AS results\n" +
+                WIDTH + ", 10)) AS results\n" +
                 "    FROM num_data\n" +
                 "    WHERE val != '0.0'";
         String last = "CREATE VIEW E AS SELECT t1.id1, t1.results, t2.expected\n" +
@@ -671,7 +672,7 @@ public class PostgresNumericTests extends PostgresBaseTest {
     public void power10Test() {
         String intermediate = "CREATE VIEW num_result AS SELECT id AS ID1, 0, " +
                 "CAST(POWER(10, LN(ABS(round(val,200)))) AS NUMERIC(" +
-                width + ", 10)) AS results\n" +
+                WIDTH + ", 10)) AS results\n" +
                 "    FROM num_data\n" +
                 "    WHERE val != '0.0'";
         String last = "CREATE VIEW E AS SELECT t1.id1, t1.results, t2.expected\n" +
@@ -684,7 +685,7 @@ public class PostgresNumericTests extends PostgresBaseTest {
     @Test
     public void testSpecialValues() {
         // This test was written with NUMERIC values, but was converted to FP
-        this.queryWithOutput(
+        this.q(
                 "WITH v(x) AS (VALUES(0E0),(1E0),(-1E0),(4.2E0),(CAST ('Infinity' AS DOUBLE))," +
                         "(CAST ('-Infinity' AS DOUBLE)),(CAST ('nan' AS DOUBLE)))\n" +
                 "SELECT x1, x2,\n" +
@@ -747,7 +748,7 @@ public class PostgresNumericTests extends PostgresBaseTest {
 
     @Test @Ignore("https://issues.apache.org/jira/browse/CALCITE-5795")
     public void testCast() {
-        this.queryWithOutput(
+        this.q(
                 "WITH v(x) AS (VALUES(0::numeric),(4.2)) SELECT x FROM v as v1(x);\n" +
                 "    x1     \n" +
                 "-----------\n" +
@@ -758,7 +759,7 @@ public class PostgresNumericTests extends PostgresBaseTest {
     @Test
     public void testSpecialValuesNumeric() {
         // Removed unsupported numeric values inf, nan, etc.
-        this.queryWithOutput(
+        this.q(
                 "WITH v(x) AS (VALUES('0'::numeric),(1),(-1),('4.2'::numeric))\n" +
                         "SELECT x1, x2,\n" +
                         "  x1 + x2 AS s,\n" +
@@ -788,7 +789,7 @@ public class PostgresNumericTests extends PostgresBaseTest {
     @Test
     public void testSpecialValues2() {
         // no div or mod defined for fp, so I removed these
-        this.queryWithOutput("WITH v(x) AS\n" +
+        this.q("WITH v(x) AS\n" +
                 "  (VALUES(0E0),(1E0),(-1E0),(4.2E0),(CAST ('Infinity' AS DOUBLE)),(CAST ('-Infinity' AS DOUBLE))," +
                 "(CAST ('nan' AS DOUBLE)))\n" +
                 "SELECT x1, x2,\n" +
@@ -846,11 +847,11 @@ public class PostgresNumericTests extends PostgresBaseTest {
     public void testSpecialValues2Numeric() {
         // Removed unsupported numeric values inf, nan, etc.
         // No div function known, so I removed this one
-        this.queryWithOutput("WITH v(x) AS\n" +
-                "  (VALUES(CAST(0 AS NUMERIC(" + width + ", 20))),\n" +
-                "         (CAST(1 AS NUMERIC(" + width + ", 20))),\n" +
-                "         (CAST(-1 AS NUMERIC(" + width + ",20))),\n" +
-                "         (CAST(4.2 AS NUMERIC(" + width + ", 20))))\n" +
+        this.q("WITH v(x) AS\n" +
+                "  (VALUES(CAST(0 AS NUMERIC(" + WIDTH + ", 20))),\n" +
+                "         (CAST(1 AS NUMERIC(" + WIDTH + ", 20))),\n" +
+                "         (CAST(-1 AS NUMERIC(" + WIDTH + ",20))),\n" +
+                "         (CAST(4.2 AS NUMERIC(" + WIDTH + ", 20))))\n" +
                 "SELECT x1, x2,\n" +
                 "  x1 / x2 AS quot,\n" +
                 "  x1 % x2 AS m\n" +
@@ -904,7 +905,7 @@ public class PostgresNumericTests extends PostgresBaseTest {
     @Test
     public void testFunctions0() {
         // TODO: this test was written with NUMERIC values, but was converted to FP
-        this.queryWithOutput("WITH v(x) AS\n" +
+        this.q("WITH v(x) AS\n" +
                 "  (VALUES(0E0),(1E0),(-1E0),(4.2E0),(-7.777E0),(CAST('inf' AS DOUBLE)),(CAST('-inf' AS DOUBLE)),(CAST('nan' AS DOUBLE)))\n" +
                 "SELECT x, -x as minusx, abs(x), floor(x), ceil(x), sign(x)\n" +
                 "FROM v;\n" +
@@ -923,7 +924,7 @@ public class PostgresNumericTests extends PostgresBaseTest {
     @Test
     public void testFunctionsNumeric0() {
         // dropped unsupported values inf, nan, etc.
-        this.queryWithOutput("WITH v(x) AS\n" +
+        this.q("WITH v(x) AS\n" +
                 "  (VALUES(0),(1),(-1),(4.2),(-7.777))\n" +
                 "SELECT x, -x as minusx, abs(x), floor(x), ceil(x), sign(x)\n" +
                 "FROM v;\n" +
@@ -941,7 +942,7 @@ public class PostgresNumericTests extends PostgresBaseTest {
         // Removed the unsupported inf, nan, etc. values
         // This test makes not sense for FP
         // 'trunc' has been renamed to 'truncate'
-        this.queryWithOutput("WITH v(x) AS\n" +
+        this.q("WITH v(x) AS\n" +
                 "  (VALUES(0),(1),(-1),(4.2),(-7.777))\n" +
                 "SELECT x, round(x), round(x,1) as round1, truncate(x), truncate(x,1) as trunc1\n" +
                 "FROM v;\n" +
@@ -982,7 +983,7 @@ public class PostgresNumericTests extends PostgresBaseTest {
     public void testSqrt() {
         // Removed 'inf' and 'nan'.
         // Interestingly, sqrt in Calcite returns a FP value.
-        this.queryWithOutput("WITH v(x) AS\n" +
+        this.q("WITH v(x) AS\n" +
                 "  (VALUES(0),(1),(4.2))\n" +
                 "SELECT x, sqrt(x)\n" +
                 "FROM v;\n" +
@@ -1001,8 +1002,8 @@ public class PostgresNumericTests extends PostgresBaseTest {
     public void testLog() {
         // Removed 'inf' and 'nan'
         // Calcite does not have log
-        this.queryWithOutput("WITH v(x) AS\n" +
-                "  (VALUES(1),(CAST(4.2 AS NUMERIC(" + width + ", 22))))\n" +
+        this.q("WITH v(x) AS\n" +
+                "  (VALUES(1),(CAST(4.2 AS NUMERIC(" + WIDTH + ", 22))))\n" +
                 "SELECT x,\n" +
                 //"  log(x),\n" +
                 "  log10(x),\n" +

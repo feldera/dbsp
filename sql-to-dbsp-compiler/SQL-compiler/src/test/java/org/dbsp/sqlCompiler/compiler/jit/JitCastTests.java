@@ -17,20 +17,6 @@ public class JitCastTests extends CastTests {
         return new DBSPCompiler(options);
     }
 
-    @Test
-    public void intAndString() {
-        String query = "SELECT '1' + 2";
-        this.testQuery(query, new DBSPZSetLiteral.Contents(
-                new DBSPTupleExpression(new DBSPI32Literal(3))));
-    }
-
-    @Test @Ignore("String cast https://github.com/feldera/dbsp/issues/338")
-    public void intAndStringTable() {
-        String query = "SELECT T.COL1 + T.COL3 FROM T";
-        this.testQuery(query, new DBSPZSetLiteral.Contents(
-                new DBSPTupleExpression(new DBSPI32Literal(100110))));
-    }
-
     @Test @Ignore("String cast https://github.com/feldera/dbsp/issues/338")
     public void castFromFPTest() {
         String query = "SELECT T.COL1 + T.COL2 + T.COL3 + T.COL5 FROM T";

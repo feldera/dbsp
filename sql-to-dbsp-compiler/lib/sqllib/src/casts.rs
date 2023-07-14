@@ -72,12 +72,12 @@ pub fn cast_to_b_fN(value: Option<F32>) -> bool {
 
 #[inline]
 pub fn cast_to_b_s(value: String) -> bool {
-    value.parse().unwrap_or(false)
+    value.trim().parse().unwrap_or(false)
 }
 
 #[inline]
 pub fn cast_to_b_sN(value: Option<String>) -> bool {
-    value.unwrap().parse().unwrap_or(false)
+    value.unwrap().trim().parse().unwrap_or(false)
 }
 
 #[inline]
@@ -169,7 +169,7 @@ pub fn cast_to_bN_fN(value: Option<F32>) -> Option<bool> {
 
 #[inline]
 pub fn cast_to_bN_s(value: String) -> Option<bool> {
-    match value.parse() {
+    match value.trim().parse() {
         Err(_) => Some(false),
         Ok(x) => Some(x),
     }
@@ -179,7 +179,7 @@ pub fn cast_to_bN_s(value: String) -> Option<bool> {
 pub fn cast_to_bN_sN(value: Option<String>) -> Option<bool> {
     match value {
         None => None,
-        Some(x) => match x.parse() {
+        Some(x) => match x.trim().parse() {
             Err(_) => Some(false),
             Ok(y) => Some(y),
         },
@@ -320,7 +320,7 @@ pub fn cast_to_decimal_fN(value: Option<F32>, precision: u32, scale: i32) -> Dec
 
 #[inline]
 pub fn cast_to_decimal_s(value: String, precision: u32, scale: i32) -> Decimal {
-    let result = match value.parse().ok() {
+    let result = match value.trim().parse().ok() {
         None => Decimal::zero(),
         Some(x) => x,
     };
@@ -331,7 +331,7 @@ pub fn cast_to_decimal_s(value: String, precision: u32, scale: i32) -> Decimal {
 pub fn cast_to_decimal_sN(value: Option<String>, precision: u32, scale: i32) -> Decimal {
     let result = match value {
         None => Decimal::zero(),
-        Some(x) => match x.parse().ok() {
+        Some(x) => match x.trim().parse().ok() {
             None => Decimal::zero(),
             Some(x) => x,
         },
@@ -462,7 +462,7 @@ pub fn cast_to_decimalN_fN(value: Option<F32>, precision: u32, scale: i32) -> Op
 
 #[inline]
 pub fn cast_to_decimalN_s(value: String, precision: u32, scale: i32) -> Option<Decimal> {
-    let result = match value.parse() {
+    let result = match value.trim().parse() {
         Err(_) => Some(Decimal::zero()),
         Ok(x) => Some(x),
     };
@@ -473,7 +473,7 @@ pub fn cast_to_decimalN_s(value: String, precision: u32, scale: i32) -> Option<D
 pub fn cast_to_decimalN_sN(value: Option<String>, precision: u32, scale: i32) -> Option<Decimal> {
     let result = match value {
         None => None,
-        Some(x) => match x.parse() {
+        Some(x) => match x.trim().parse() {
             Err(_) => Some(Decimal::zero()),
             Ok(y) => Some(y),
         },
@@ -590,7 +590,7 @@ pub fn cast_to_d_fN(value: Option<F32>) -> F64 {
 
 #[inline]
 pub fn cast_to_d_s(value: String) -> F64 {
-    match value.parse() {
+    match value.trim().parse() {
         Err(_) => F64::zero(),
         Ok(x) => x,
     }
@@ -598,7 +598,7 @@ pub fn cast_to_d_s(value: String) -> F64 {
 
 #[inline]
 pub fn cast_to_d_sN(value: Option<String>) -> F64 {
-    match value.unwrap().parse() {
+    match value.unwrap().trim().parse() {
         Err(_) => F64::zero(),
         Ok(x) => x,
     }
@@ -700,7 +700,7 @@ pub fn cast_to_dN_fN(value: Option<F32>) -> Option<F64> {
 
 #[inline]
 pub fn cast_to_dN_s(value: String) -> Option<F64> {
-    match value.parse::<f64>() {
+    match value.trim().parse::<f64>() {
         Err(_) => Some(F64::zero()),
         Ok(x) => Some(F64::new(x)),
     }
@@ -710,7 +710,7 @@ pub fn cast_to_dN_s(value: String) -> Option<F64> {
 pub fn cast_to_dN_sN(value: Option<String>) -> Option<F64> {
     match value {
         None => None,
-        Some(x) => match x.parse::<f64>() {
+        Some(x) => match x.trim().parse::<f64>() {
             Err(_) => Some(F64::zero()),
             Ok(x) => Some(F64::new(x)),
         },
@@ -809,7 +809,7 @@ pub fn cast_to_f_fN(value: Option<F32>) -> F32 {
 
 #[inline]
 pub fn cast_to_f_s(value: String) -> F32 {
-    match value.parse() {
+    match value.trim().parse() {
         Err(_) => F32::zero(),
         Ok(x) => x,
     }
@@ -817,7 +817,7 @@ pub fn cast_to_f_s(value: String) -> F32 {
 
 #[inline]
 pub fn cast_to_f_sN(value: Option<String>) -> F32 {
-    match value.unwrap().parse() {
+    match value.unwrap().trim().parse() {
         Err(_) => F32::zero(),
         Ok(x) => x,
     }
@@ -919,7 +919,7 @@ pub fn cast_to_fN_fN(value: Option<F32>) -> Option<F32> {
 
 #[inline]
 pub fn cast_to_fN_s(value: String) -> Option<F32> {
-    match value.parse::<f32>() {
+    match value.trim().parse::<f32>() {
         Err(_) => Some(F32::zero()),
         Ok(x) => Some(F32::from(x)),
     }
@@ -929,7 +929,7 @@ pub fn cast_to_fN_s(value: String) -> Option<F32> {
 pub fn cast_to_fN_sN(value: Option<String>) -> Option<F32> {
     match value {
         None => None,
-        Some(x) => match x.parse::<f32>() {
+        Some(x) => match x.trim().parse::<f32>() {
             Err(_) => Some(F32::zero()),
             Ok(x) => Some(F32::from(x)),
         },
@@ -1340,12 +1340,12 @@ pub fn cast_to_i16_fN(value: Option<F32>) -> i16 {
 
 #[inline]
 pub fn cast_to_i16_s(value: String) -> i16 {
-    value.parse().unwrap_or(0)
+    value.trim().parse().unwrap_or(0)
 }
 
 #[inline]
 pub fn cast_to_i16_sN(value: Option<String>) -> i16 {
-    value.unwrap().parse().unwrap_or(0)
+    value.unwrap().trim().parse().unwrap_or(0)
 }
 
 #[inline]
@@ -1444,7 +1444,7 @@ pub fn cast_to_i16N_fN(value: Option<F32>) -> Option<i16> {
 
 #[inline]
 pub fn cast_to_i16N_s(value: String) -> Option<i16> {
-    match value.parse() {
+    match value.trim().parse() {
         Err(_) => Some(0),
         Ok(x) => Some(x),
     }
@@ -1454,7 +1454,7 @@ pub fn cast_to_i16N_s(value: String) -> Option<i16> {
 pub fn cast_to_i16N_sN(value: Option<String>) -> Option<i16> {
     match value {
         None => None,
-        Some(x) => match x.parse() {
+        Some(x) => match x.trim().parse() {
             Err(_) => Some(0),
             Ok(y) => Some(y),
         },
@@ -1553,12 +1553,12 @@ pub fn cast_to_i32_fN(value: Option<F32>) -> i32 {
 
 #[inline]
 pub fn cast_to_i32_s(value: String) -> i32 {
-    value.parse().unwrap_or(0)
+    value.trim().parse().unwrap_or(0)
 }
 
 #[inline]
 pub fn cast_to_i32_sN(value: Option<String>) -> i32 {
-    value.unwrap().parse().unwrap_or(0)
+    value.unwrap().trim().parse().unwrap_or(0)
 }
 
 #[inline]
@@ -1663,7 +1663,7 @@ pub fn cast_to_i32N_fN(value: Option<F32>) -> Option<i32> {
 
 #[inline]
 pub fn cast_to_i32N_s(value: String) -> Option<i32> {
-    match value.parse() {
+    match value.trim().parse() {
         Err(_) => Some(0),
         Ok(x) => Some(x),
     }
@@ -1673,7 +1673,7 @@ pub fn cast_to_i32N_s(value: String) -> Option<i32> {
 pub fn cast_to_i32N_sN(value: Option<String>) -> Option<i32> {
     match value {
         None => None,
-        Some(x) => match x.parse() {
+        Some(x) => match x.trim().parse() {
             Err(_) => Some(0),
             Ok(y) => Some(y),
         },
@@ -1772,12 +1772,12 @@ pub fn cast_to_i64_fN(value: Option<F32>) -> i64 {
 
 #[inline]
 pub fn cast_to_i64_s(value: String) -> i64 {
-    value.parse().unwrap_or(0)
+    value.trim().parse().unwrap_or(0)
 }
 
 #[inline]
 pub fn cast_to_i64_sN(value: Option<String>) -> i64 {
-    value.unwrap().parse().unwrap_or(0)
+    value.unwrap().trim().parse().unwrap_or(0)
 }
 
 #[inline]
@@ -1886,7 +1886,7 @@ pub fn cast_to_i64N_fN(value: Option<F32>) -> Option<i64> {
 
 #[inline]
 pub fn cast_to_i64N_s(value: String) -> Option<i64> {
-    match value.parse() {
+    match value.trim().parse() {
         Err(_) => Some(0),
         Ok(x) => Some(x),
     }
@@ -1896,7 +1896,7 @@ pub fn cast_to_i64N_s(value: String) -> Option<i64> {
 pub fn cast_to_i64N_sN(value: Option<String>) -> Option<i64> {
     match value {
         None => None,
-        Some(x) => match x.parse() {
+        Some(x) => match x.trim().parse() {
             Err(_) => Some(0),
             Ok(y) => Some(y),
         },

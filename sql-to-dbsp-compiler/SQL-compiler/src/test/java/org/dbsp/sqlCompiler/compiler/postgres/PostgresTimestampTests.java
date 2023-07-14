@@ -151,7 +151,7 @@ public class PostgresTimestampTests extends PostgresBaseTest {
 
     @Test
     public void testTS() {
-        this.queryWithOutput("SELECT d1 FROM TIMESTAMP_TBL;\n" +
+        this.q("SELECT d1 FROM TIMESTAMP_TBL;\n" +
                 "             d1              \n" +
                 "-----------------------------\n" +
                 //" -infinity\n" +
@@ -245,7 +245,7 @@ public class PostgresTimestampTests extends PostgresBaseTest {
         // Calcite does not support 'without time zone'.
         // SELECT d1 FROM TIMESTAMP_TBL
         //   WHERE d1 > timestamp without time zone '1997-01-02';
-        this.queryWithOutput("SELECT d1 FROM TIMESTAMP_TBL\n" +
+        this.q("SELECT d1 FROM TIMESTAMP_TBL\n" +
                 "   WHERE d1 > timestamp '1997-01-02';\n" +
                 "             d1             \n" +
                 "----------------------------\n" +
@@ -303,7 +303,7 @@ public class PostgresTimestampTests extends PostgresBaseTest {
     @Test
     public void testLt() {
         // SELECT d1 FROM TIMESTAMP_TBL
-        this.queryWithOutput("SELECT d1 FROM TIMESTAMP_TBL\n" +
+        this.q("SELECT d1 FROM TIMESTAMP_TBL\n" +
                 "   WHERE d1 < timestamp '1997-01-02';\n" +
                 "             d1              \n" +
                 "-----------------------------\n" +
@@ -328,7 +328,7 @@ public class PostgresTimestampTests extends PostgresBaseTest {
     public void testEq() {
         // SELECT d1 FROM TIMESTAMP_TBL
         //   WHERE d1 = timestamp without time zone '1997-01-02';
-        this.queryWithOutput("SELECT d1 FROM TIMESTAMP_TBL\n" +
+        this.q("SELECT d1 FROM TIMESTAMP_TBL\n" +
                 "   WHERE d1 = timestamp '1997-01-02';\n" +
                 "             d1              \n" +
                 "-----------------------------\n" +
@@ -339,7 +339,7 @@ public class PostgresTimestampTests extends PostgresBaseTest {
     public void testNe() {
         // SELECT d1 FROM TIMESTAMP_TBL
         //   WHERE d1 != timestamp without time zone '1997-01-02';
-        this.queryWithOutput("SELECT d1 FROM TIMESTAMP_TBL\n" +
+        this.q("SELECT d1 FROM TIMESTAMP_TBL\n" +
                 "   WHERE d1 != timestamp '1997-01-02';\n" +
                 "             d1              \n" +
                 "-----------------------------\n" +
@@ -411,7 +411,7 @@ public class PostgresTimestampTests extends PostgresBaseTest {
     public void testLeq() {
         // SELECT d1 FROM TIMESTAMP_TBL
         //   WHERE d1 <= timestamp without time zone '1997-01-02';
-       this.queryWithOutput("SELECT d1 FROM TIMESTAMP_TBL\n" +
+       this.q("SELECT d1 FROM TIMESTAMP_TBL\n" +
                 "   WHERE d1 <= timestamp '1997-01-02';\n" +
                "             d1              \n" +
                "-----------------------------\n" +
@@ -437,7 +437,7 @@ public class PostgresTimestampTests extends PostgresBaseTest {
     public void testGte() {
         // SELECT d1 FROM TIMESTAMP_TBL
         //   WHERE d1 >= timestamp without time zone '1997-01-02';
-       this.queryWithOutput("SELECT d1 FROM TIMESTAMP_TBL\n" +
+       this.q("SELECT d1 FROM TIMESTAMP_TBL\n" +
                 "   WHERE d1 >= timestamp '1997-01-02';\n" +
                "             d1             \n" +
                "----------------------------\n" +
@@ -621,7 +621,7 @@ public class PostgresTimestampTests extends PostgresBaseTest {
         // SELECT date_trunc( 'week', timestamp '2004-02-29 15:44:17.71393' ) AS week_trunc;
         // Postgres gives a different result from Calcite!
         // This day was a Sunday.  Postgres returns 2004-02-23, the previous Monday.
-        this.queryWithOutput("SELECT FLOOR(timestamp '2004-02-29 15:44:17.71393' TO WEEK) AS week_trunc;\n" +
+        this.q("SELECT FLOOR(timestamp '2004-02-29 15:44:17.71393' TO WEEK) AS week_trunc;\n" +
                 "        week_trunc        \n" +
                 "--------------------------\n" +
                 " Mon Feb 29 00:00:00 2004");
@@ -725,7 +725,7 @@ public class PostgresTimestampTests extends PostgresBaseTest {
         //   date_part( 'minute', d1) AS minute, date_part( 'second', d1) AS second
         //   FROM TIMESTAMP_TBL;
         // Postgres EXTRACT returns floats for seconds...
-        this.queryWithOutput("SELECT d1 as \"timestamp\",\n" +
+        this.q("SELECT d1 as \"timestamp\",\n" +
                 "EXTRACT(YEAR FROM d1) AS 'year', EXTRACT(month FROM d1) AS 'month',\n" +
                 "EXTRACT(day FROM d1) AS 'day', EXTRACT(hour FROM d1) AS 'hour',\n" +
                 "EXTRACT(minute FROM d1) AS 'minute', EXTRACT(second FROM d1) AS 'second'\n" +
@@ -806,7 +806,7 @@ public class PostgresTimestampTests extends PostgresBaseTest {
         //   date_part( 'quarter', d1) AS quarter, date_part( 'msec', d1) AS msec,
         //   date_part( 'usec', d1) AS usec
         //   FROM TIMESTAMP_TBL;
-        this.queryWithOutput("SELECT d1 as \"timestamp\",\n" +
+        this.q("SELECT d1 as \"timestamp\",\n" +
                 "   EXTRACT(quarter FROM d1) AS 'quarter', EXTRACT(MILLISECOND FROM d1) AS 'msec',\n" +
                 "   EXTRACT(MICROSECOND FROM d1) AS 'usec'\n" +
                 "   FROM TIMESTAMP_TBL;\n" +
@@ -888,7 +888,7 @@ public class PostgresTimestampTests extends PostgresBaseTest {
         //   date_part( 'doy', d1) AS doy
         //   FROM TIMESTAMP_TBL;
         // had to adjust column 4.
-        this.queryWithOutput("SELECT d1 as \"timestamp\",\n" +
+        this.q("SELECT d1 as \"timestamp\",\n" +
                 "   extract(isoyear FROM d1) AS 'isoyear', extract(week FROM d1) AS 'week',\n" +
                 "   extract(isodow FROM d1) AS 'isodow', extract(dow FROM d1) AS 'dow',\n" +
                 "   extract(doy FROM d1) AS 'doy'\n" +
@@ -968,7 +968,7 @@ public class PostgresTimestampTests extends PostgresBaseTest {
         // date_part has arguments swapped in Calcite
         // had to adjust column 4.
         // had to change quoting
-        this.queryWithOutput("SELECT d1 as \"timestamp\",\n" +
+        this.q("SELECT d1 as \"timestamp\",\n" +
                 "        date_part(isoyear, d1) AS 'isoyear', date_part(week, d1) AS 'week',\n" +
                 "        date_part(isodow, d1) AS 'isodow',\n" +
                 "        date_part(dow, d1) AS 'dow',\n" +
@@ -1055,7 +1055,7 @@ public class PostgresTimestampTests extends PostgresBaseTest {
         //   FROM TIMESTAMP_TBL;
 
         // Postgres gives a float for epoch
-        this.queryWithOutput("SELECT d1 as \"timestamp\",\n" +
+        this.q("SELECT d1 as \"timestamp\",\n" +
                 "   extract(decade FROM d1) AS 'decade',\n" +
                 "   extract(century FROM d1) AS 'century',\n" +
                 "   extract(millennium FROM d1) AS 'millennium',\n" +
@@ -1136,7 +1136,7 @@ public class PostgresTimestampTests extends PostgresBaseTest {
     public void testCenturies1() {
         // Postgres gives a float for epoch
         // Had to change quoting
-        this.queryWithOutput("SELECT d1 as \"timestamp\",\n" +
+        this.q("SELECT d1 as \"timestamp\",\n" +
                 "   date_part( decade, d1) AS 'decade',\n" +
                 "   date_part( century, d1) AS 'century',\n" +
                 "   date_part( millennium, d1) AS 'millennium',\n" +
@@ -1216,7 +1216,7 @@ public class PostgresTimestampTests extends PostgresBaseTest {
     @Test
     public void testMicroseconds() {
         // microsecond, second, epoch are all floats in Postgres, but long in Calcite
-        this.queryWithOutput("SELECT d1 as \"timestamp\",\n" +
+        this.q("SELECT d1 as \"timestamp\",\n" +
                 "   extract(microsecond from d1) AS 'microseconds',\n" +
                 "   extract(millisecond from d1) AS 'milliseconds',\n" +
                 "   extract(second from d1) AS 'seconds',\n" +
@@ -1300,7 +1300,7 @@ public class PostgresTimestampTests extends PostgresBaseTest {
     @Test
     public void testLargeYear() {
         // Timestamp out of range to be represented using milliseconds
-        this.queryWithOutput("SELECT extract(epoch from TIMESTAMP '5000-01-01 00:00:00');\n" +
+        this.q("SELECT extract(epoch from TIMESTAMP '5000-01-01 00:00:00');\n" +
                 "epoch\n" +
                 "---------\n" +
                 "95617584000");

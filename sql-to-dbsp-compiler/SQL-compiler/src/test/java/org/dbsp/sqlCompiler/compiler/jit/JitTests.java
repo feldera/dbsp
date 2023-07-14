@@ -31,32 +31,6 @@ public class JitTests extends EndToEndTests {
 
     // All the @Ignore-ed tests below should eventually pass.
 
-    @Test @Override @Ignore("Uses Decimals, not yet supported by JIT https://github.com/feldera/dbsp/issues/158")
-    public void divZero() {
-        String query = "SELECT 'Infinity' / 0";
-        this.testQuery(query, new DBSPZSetLiteral.Contents(
-                new DBSPTupleExpression(
-                        new DBSPDecimalLiteral(DBSPTypeDecimal.DEFAULT_NULLABLE,
-                                null))));
-    }
-
-    @Test @Override @Ignore("Uses Decimals, not yet supported by JIT https://github.com/feldera/dbsp/issues/158")
-    public void decimalParse() {
-        String query = "SELECT CAST('0.5' AS DECIMAL)";
-        this.testQuery(query, new DBSPZSetLiteral.Contents(
-                new DBSPTupleExpression(
-                        new DBSPDecimalLiteral(DBSPTypeDecimal.DEFAULT,
-                                new BigDecimal("0.5")))));
-    }
-
-    @Test @Override @Ignore("Uses Decimals, not yet supported by JIT https://github.com/feldera/dbsp/issues/158")
-    public void decimalParseFail() {
-        String query = "SELECT CAST('blah' AS DECIMAL)";
-        this.testQuery(query, new DBSPZSetLiteral.Contents(
-                new DBSPTupleExpression(
-                        new DBSPDecimalLiteral(DBSPTypeDecimal.DEFAULT, new BigDecimal(0)))));
-    }
-
     @Test @Override @Ignore("WINDOWS not yet implemented https://github.com/feldera/dbsp/issues/158")
     public void overTest() {
         DBSPExpression t = new DBSPTupleExpression(new DBSPI32Literal(10), new DBSPI64Literal(2));

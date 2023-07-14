@@ -61,7 +61,8 @@ public class JITZSetLiteral extends JITValue {
         for (Map.Entry<JITTupleLiteral, Long> element : this.elements.entrySet()) {
             long weight = element.getValue();
             ArrayNode array = set.addArray();
-            array.add(element.getKey().asJson());
+            BaseJsonNode keyJson = element.getKey().asJson();
+            array.add(keyJson);
             array.add(weight);
         }
         return result;
