@@ -49,9 +49,6 @@ Scroll through the SQL code.  It should consist of `CREATE TABLE` and
 * `CREATE VIEW` describes an analysis in terms of tables or views.
   DBSP updates views whenever it receives new data in a table.
   
-The following section shows how one connects input sources to DBSP
-input streams and views to DBSP output streams.
-
 ## Connectors
 
 ![Input & Output](io.png)
@@ -95,10 +92,10 @@ streaming pipelines.
 
 ![Streaming](streaming.png)
 
-A DBSP pipeline is a SQL program plus a mapping from SQL tables to
-input connectors and SQL views to output connectors.  The "Streaming"
-tabs allow a DBSP user to make and manage these mappings as well as
-start, stop, manage, and monitor pipelines.
+A user assembles a **pipeline** by attaching a program's tables to
+input connectors and its views to output connectors.  The "Streaming"
+tabs allow a DBSP user to set up pipelines and to start, stop, manage,
+and monitor them.
 
 The "Pipeline Builder" tab allows a user to create new pipelines.
 
@@ -113,12 +110,12 @@ the play symbol ![play](play.png), which starts the pipeline:
 ![Pipeline Management](pipeline-management.png)
 
 Choose a row and click on its pencil icon to view the pipeline's
-mappings.  The box in the middle of the diagram represents the SQL
+connector attachments.  The box in the middle of the diagram represents the SQL
 program, listing its tables on the left and its views on the right.
 Input connectors are listed to the left of the box, output connectors
 to the right.  Curved lines join input connectors with the tables to
 which they input data and views with the output connectors to which
-they output data.  Tables and views may be left unmapped if the
+they output data.  Tables and views may be left without an attached connector if the
 pipeline does not need them:
 
 ![Pipeline builder](pipeline-builder.png)

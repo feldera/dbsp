@@ -17,16 +17,24 @@ these ways:
 * On Linux only, first install [Docker Engine][2] and the [Docker
   Compose plugin][3].
 
-  > :bulb: The plugin implements Docker Compose v2, invoked as `docker
-  > compose`.  DBSP does not support the older Docker Compose v1,
-  > which was invoked with `docker-compose` (note the ` ` versus `-`
-  > distinction).
+  :::tip
+
+  The plugin implements Docker Compose v2, invoked as `docker
+  compose`.  DBSP does not support the older Docker Compose v1,
+  which was invoked with `docker-compose` (note the ` ` versus `-`
+  distinction).
+
+  :::
 
   Then, follow the instructions to [manage Docker as a non-root
   user][4].
 
-  > :bulb: If you you only want root to manage Docker, you can prefix
-  > the `docker compose` command below with `sudo`.
+  :::tip
+
+  If you you only want root to manage Docker, you can prefix
+  the `docker compose` command below with `sudo`.
+
+  :::
 
 You also need `curl` and a web browser such as Chrome or Firefox.
 
@@ -76,9 +84,12 @@ where `docker compose` is running.  Docker Compose will show its
 progress as it shuts down each of the containers in turn.  It can take
 up to about 15 seconds to complete shutdown.
 
-Stopping the demo discards SQL, data, and other content that you added
-to the demo, so be sure that you copy out anything valuable before
-stopping it.
+:::caution
+
+Stopping the demo discards SQL and anything else that you added, so be
+sure that you copy out anything valuable before you stop it.
+
+:::
 
 ## Troubleshooting
 
