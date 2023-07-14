@@ -313,14 +313,11 @@ pub(crate) struct ProgramDescr {
 /// │                     │                   │
 /// │                     ▼                   │
 /// │                   Failed                │
-/// └────────────────┬────────────────────────┘
-///                  │       ▲
-///                  ▼       │
-///                 Unreachable
+/// └─────────────────────────────────────────┘
 /// ```
 #[derive(Serialize, ToSchema, Eq, PartialEq, Debug, Clone, Copy)]
 #[cfg_attr(test, derive(proptest_derive::Arbitrary))]
-pub(crate) enum PipelineStatus {
+pub enum PipelineStatus {
     /// Pipeline has not been started or has been shut down.
     ///
     /// The pipeline remains in this state until the user triggers
@@ -412,17 +409,6 @@ pub(crate) enum PipelineStatus {
 
     /// The pipeline encountered a fatal error during initialization or at runtime.
     Failed,
-
-    /// An unexpected runtime error renders the pipeline unreachable.
-    ///
-    /// This can be caused by a network or hardware failure, software panic, etc. 
-    ///
-    /// The pipeline remains in this state until:
-    /// 1. The manager performs a forced shutdown of the pipeline; transitions to the
-    ///    [`Shutdown`] state.
-    /// 2. The transient error condition clears and the pipeline becomes reachable
-    ///    again.
-    Unreachable,
 }
 
 impl TryFrom<String> for PipelineStatus {
@@ -434,7 +420,6 @@ impl TryFrom<String> for PipelineStatus {
             "initializing" => Ok(Self::Initializing),
             "paused" => Ok(Self::Paused),
             "running" => Ok(Self::Running),
-            "unreachable" => Ok(Self::Unreachable),
             "failed" => Ok(Self::Failed),
             "shutting_down" => Ok(Self::ShuttingDown),
             _ => Err(DBError::unknown_pipeline_status(value)),
@@ -451,7 +436,6 @@ impl From<PipelineStatus> for &'static str {
             PipelineStatus::Paused => "paused",
             PipelineStatus::Running => "running",
             PipelineStatus::Failed => "failed",
-            PipelineStatus::Unreachable => "unreachable",
             PipelineStatus::ShuttingDown => "shutting_down",
         }
     }
@@ -652,22 +636,24 @@ pub(crate) struct PipelineDescr {
 }
 
 #[derive(Serialize, ToSchema, Eq, PartialEq, Debug, Clone)]
+#[cfg_attr(test, derive(proptest_derive::Arbitrary))]
 pub(crate) struct PipelineRuntimeState {
     pub port: u16,
     pub desired_status: PipelineStatus,
     pub current_status: PipelineStatus,
+    #[proptest(value = "Utc::now()")]
     pub status_since: DateTime<Utc>,
+    // TODO
+    #[proptest(value = "None")]
     pub error: Option<ErrorResponse>,
+    #[proptest(value = "Utc::now()")]
     pub created: DateTime<Utc>,
 }
 
 impl PipelineRuntimeState {
-    pub(crate) fn set_current_status<E>(&mut self, new_current_status: PipelineStatus, error: Option<E>)
-    where
-        ErrorResponse: for<'a> From<&'a E>,
-    {
+    pub(crate) fn set_current_status(&mut self, new_current_status: PipelineStatus, error: Option<ErrorResponse>) {
         self.current_status = new_current_status;
-        self.error = error.map(ErrorResponse::from);
+        self.error = error;
         self.status_since = Utc::now();
     }
 
@@ -1273,12 +1259,12 @@ impl Storage for ProjectDB {
                                                     'is_input', is_input))
                                 FILTER (WHERE ac.name IS NOT NULL),
                         '[]'),
-                rt.port, rt.desired_status, rt.current_status, rt.status_since, rt.error, rt.created,
+                rt.port, rt.desired_status, rt.current_status, rt.status_since, rt.error, rt.created
                 FROM pipeline p
                 INNER JOIN pipeline_runtime_state rt on p.id = rt.id
                 LEFT JOIN attached_connector ac on p.id = ac.pipeline_id
                 WHERE p.tenant_id = $1
-                GROUP BY p.id;",
+                GROUP BY p.id, rt.id;",
                 &[&tenant_id.0],
             )
             .await?;
@@ -1307,12 +1293,12 @@ impl Storage for ProjectDB {
                                                     'is_input', is_input))
                                 FILTER (WHERE ac.name IS NOT NULL),
                         '[]'),
-                rt.port, rt.desired_status, rt.current_status, rt.status_since, rt.error, rt.created,
+                rt.port, rt.desired_status, rt.current_status, rt.status_since, rt.error, rt.created
                 FROM pipeline p
                 INNER JOIN pipeline_runtime_state rt on p.id = rt.id
                 LEFT JOIN attached_connector ac on p.id = ac.pipeline_id
                 WHERE p.id = $1 AND p.tenant_id = $2
-                GROUP BY p.id
+                GROUP BY p.id, rt.id
                 ",
                 &[&pipeline_id.0, &tenant_id.0],
             )
@@ -1362,7 +1348,7 @@ impl Storage for ProjectDB {
             .get()
             .await?
             .query_opt(
-                "SELECT port, desired_status, current_status, status_since, error, created,
+                "SELECT port, desired_status, current_status, status_since, error, created
                 FROM pipeline_runtime_state
                 WHERE id = $1 AND tenant_id = $2",
                 &[&pipeline_id.0, &tenant_id.0],
@@ -1419,12 +1405,12 @@ impl Storage for ProjectDB {
                                                     'is_input', is_input))
                                 FILTER (WHERE ac.name IS NOT NULL),
                         '[]'),
-                rt.port, rt.desired_status, rt.current_status, rt.status_since, rt.error, rt.created,
+                rt.port, rt.desired_status, rt.current_status, rt.status_since, rt.error, rt.created
                 FROM pipeline p
                 INNER JOIN pipeline_runtime_state rt on p.id = rt.id
                 LEFT JOIN attached_connector ac on p.id = ac.pipeline_id
                 WHERE p.name = $1 AND p.tenant_id = $2
-                GROUP BY p.id
+                GROUP BY p.id, rt.id
                 ",
                 &[&name, &tenant_id.0],
             )
@@ -1448,7 +1434,7 @@ impl Storage for ProjectDB {
         let mut client = self.pool.get().await?;
         let txn = client.transaction().await?;
         txn.execute(
-            "INSERT INTO pipeline (id, program_id, version, name, description, config, status, tenant_id) VALUES($1, $2, 1, $3, $4, $5, 'shutdown', $6)",
+            "INSERT INTO pipeline (id, program_id, version, name, description, config, tenant_id) VALUES($1, $2, 1, $3, $4, $5, $6)",
             &[&id, &program_id.map(|id| id.0),
             &pipline_name,
             &pipeline_description,
@@ -1460,7 +1446,7 @@ impl Storage for ProjectDB {
             .map_err(|e| ProjectDB::maybe_program_id_foreign_key_constraint_err(e, program_id))?;
 
         txn.execute(
-            "INSERT INTO pipeline_runtime_state (id, tenant_id, desired_status, current_status, status_since, created) VALUES($1, $2, 'shutdown', 'shutdown', created = extract(epoch from now()), created = extract(epoch from now()))",
+            "INSERT INTO pipeline_runtime_state (id, tenant_id, desired_status, current_status, status_since, created) VALUES($1, $2, 'shutdown', 'shutdown', extract(epoch from now()), extract(epoch from now()))",
             &[&id, &tenant_id.0])
             .await?;
 
@@ -1545,32 +1531,37 @@ impl Storage for ProjectDB {
     // column.
     async fn update_pipeline_runtime_state(
         &self,
+        tenant_id: TenantId,
         pipeline_id: PipelineId,
         state: &PipelineRuntimeState,
     ) -> Result<(), DBError> {
         let current_status: &'static str = state.current_status.into();
 
-        self.pool
+        let modified_rows = self.pool
             .get()
             .await?
             .execute(
                 "UPDATE pipeline_runtime_state
-                SET port = $2,
-                    current_status = $3,
-                    status_since = $4,
-                    created = $5,
-                    error = $6
-                WHERE id = $1
+                SET port = $3,
+                    current_status = $4,
+                    status_since = $5,
+                    created = $6,
+                    error = $7
+                WHERE id = $1 AND tenant_id = $2
                 ",
                 &[&pipeline_id.0,
+                  &tenant_id.0,
                   &(state.port as i16),
                   &current_status,
                   &state.status_since.timestamp(),
                   &state.created.timestamp(),
-                  &state.error.map(|e| serde_json::to_string(&e).unwrap())],
+                  &state.error.as_ref().map(|e| serde_json::to_string(&e).unwrap())],
             )
             .await?;
 
+        if modified_rows == 0 {
+            return Err(DBError::UnknownPipeline { pipeline_id });
+        }
         Ok(())
     }
 
@@ -1582,13 +1573,13 @@ impl Storage for ProjectDB {
     ) -> Result<(), DBError> {
         let desired_status: &'static str = desired_status.into();
 
-        self.pool
+        let modified_rows = self.pool
             .get()
             .await?
             .execute(
                 "UPDATE pipeline_runtime_state
-                SET desired_status = $3,
-                WHERE tenant_id = $1, id = $2
+                SET desired_status = $3
+                WHERE tenant_id = $1 AND id = $2
                 ",
                 &[&tenant_id.0,
                   &pipeline_id.0,
@@ -1596,6 +1587,9 @@ impl Storage for ProjectDB {
             )
             .await?;
 
+        if modified_rows == 0 {
+            return Err(DBError::UnknownPipeline { pipeline_id });
+        }
         Ok(())
     }
 
@@ -2101,8 +2095,8 @@ impl ProjectDB {
     }
 
     fn deserialize_error_response(pipeline_id: PipelineId, error_str: &str) -> Result<ErrorResponse, DBError> {
-        serde_json::from_str::<ErrorResponse>(error_str).map_err(|e| {
-            DBError::invalid_data(format!("Unexpected pipeline error format: {error_str}"))
+        serde_json::from_str::<ErrorResponse>(error_str).map_err(|_| {
+            DBError::invalid_data(format!("Unexpected pipeline error format for pipeline '{pipeline_id}': {error_str}"))
         })
     }
     

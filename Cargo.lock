@@ -2112,6 +2112,7 @@ dependencies = [
  "proptest-derive",
  "rand",
  "refinery",
+ "reqwest",
  "serde",
  "serde_json",
  "serde_yaml",

@@ -52,7 +52,7 @@ CREATE TABLE IF NOT EXISTS pipeline_runtime_state (
     status_since bigint NOT NULL,
     error varchar,
     created bigint NOT NULL,
-    FOREIGN KEY id REFERENCES pipeline(id) ON DELETE CASCADE,
+    FOREIGN KEY (id) REFERENCES pipeline(id) ON DELETE CASCADE
 );
 
 CREATE TABLE IF NOT EXISTS pipeline_history (

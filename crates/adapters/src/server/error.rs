@@ -67,7 +67,7 @@ use std::{
 use utoipa::ToSchema;
 
 /// Information returned by REST API endpoints on error.
-#[derive(Serialize, Deserialize, ToSchema)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, ToSchema)]
 pub struct ErrorResponse {
     /// Human-readable error message.
     #[schema(example = "Unknown input format 'xml'.")]

@@ -49,11 +49,12 @@ use dbsp_adapters::{ControllerError, ErrorResponse};
 use env_logger::Env;
 use log::debug;
 use serde::{Deserialize, Serialize};
-use std::{env, io::Write};
 use std::{
+    env, io::Write,
     fs::{read, write},
     net::TcpListener,
     sync::Arc,
+    time::Duration,
 };
 use tokio::sync::Mutex;
 use utoipa::{openapi::OpenApi as OpenApiDoc, OpenApi, ToSchema};
@@ -77,7 +78,7 @@ use db::{
     PipelineRevision, ProgramDescr, ProgramId, ProjectDB, Version,
 };
 pub use error::ManagerError;
-use runner::{LocalRunner, Runner, RunnerError, STARTUP_TIMEOUT};
+use runner::{Runner, RunnerError};
 
 use crate::auth::TenantId;
 
@@ -528,7 +529,7 @@ fn example_pipline_invalid_output_ac() -> ErrorResponse {
 fn example_pipeline_timeout() -> ErrorResponse {
     ErrorResponse::from_error_nolog(&RunnerError::PipelineInitializationTimeout {
         pipeline_id: PipelineId(uuid!("2e79afe1-ff4d-44d3-af5f-9397de7746c0")),
-        timeout: STARTUP_TIMEOUT,
+        timeout: Duration::from_millis(10_000),
     })
 }
 
@@ -1486,11 +1487,9 @@ async fn pipeline_delete(
 ) -> Result<HttpResponse, ManagerError> {
     let pipeline_id = PipelineId(parse_uuid_param(&req, "pipeline_id")?);
 
-    let db = state.db.lock().await;
-
     state
         .runner
-        .delete_pipeline(*tenant_id, &db, pipeline_id)
+        .delete_pipeline(*tenant_id, pipeline_id)
         .await?;
 
     Ok(HttpResponse::Accepted().finish())

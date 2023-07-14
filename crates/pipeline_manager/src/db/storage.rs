@@ -319,6 +319,7 @@ pub(crate) trait Storage {
 
     async fn update_pipeline_runtime_state(
         &self,
+        tenant_id: TenantId,
         pipeline_id: PipelineId,
         state: &PipelineRuntimeState,
     ) -> Result<(), DBError>;
